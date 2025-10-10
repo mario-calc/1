@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RF Span Loss Calculator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Chart.js for the Tilt Chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script> 
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* Custom CSS for a better aesthetic and interaction */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* Dark background */
+            /* Use flex column to stack nav and content */
+            display: flex;
+            flex-direction: column; 
+            min-height: 100vh;
+        }
+        
+        /* Wrapper to center the content section below the fixed nav */
+        .content-wrapper {
+            flex-grow: 1; /* Takes up remaining vertical space */
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to the top of the remaining space */
+            padding: 20px;
+        }
+
+        .calculator {
+            max-width: 850px; 
+            width: 100%;
+            /* Rugged, dark panel aesthetic */
+            box-shadow: 0 0 40px rgba(78, 205, 196, 0.1), 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            border: 1px solid #30363d;
+            background-color: #1a2027; /* Slightly lighter than nav for contrast */
+            border-radius: 1.5rem;
+        }
+
+        /* --- SPECTRUM ANALYZER DISPLAY STYLES --- */
+        .spectrum-display {
+            position: relative;
+            background-color: #000000; /* Pure black screen */
+            border: 4px solid #30363d; /* Thick border for a device feel */
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.8); /* Inner shadow for depth */
+        }
+        
+        /* Graticule (Grid) effect using a pseudo-element */
+        .spectrum-display::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 0;
+            /* Create a subtle grid pattern (graticule) using repeating linear gradients */
+            background-image: 
+                repeating-linear-gradient(to right, #1f3a3a 1px, transparent 1px, transparent 19%), /* Vertical lines (Frequency/Span) */
+                repeating-linear-gradient(to bottom, #1f3a3a 1px, transparent 1px, transparent 24%); /* Horizontal lines (Amplitude/dB) */
+            background-size: 20% 25%; /* Creates a 5x4 grid */
+            opacity: 0.5; /* Subtle grid color */
+        }
+
+        /* Ensure content is layered above the graticule */
+        .display-content > div {
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Input/Select Styling for a consistent, dark control panel look */
+        .input-group label {
+            text-align: left;
+        }
+        
+        .input-field, .select-field {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #4a5568; /* Slightly lighter border on focus */
+            background-color: #0f131a;
+            color: #ffffff;
+            border-radius: 0.5rem;
+            font-size: 1.1rem;
+            transition: border-color 0.2s;
+        }
+
+        .input-field:focus, .select-field:focus {
+            border-color: #4ECDC4; /* Teal focus glow */
+            outline: none;
+        }
+
+        /* Output colors mimic neon traces */
+        .output-value-critical { color: #f87171; } /* Red for bad input levels */
+        .output-value-marginal { color: #facc15; } /* Yellow for marginal input levels */
+        .output-value-good { color: #84cc16; } /* Bright Green for good input levels */
+        
+        /* Loss calculations are bright yellow */
+        .output-value-loss { color: #facc15; } 
+
+        .output-value-default { color: #e5e7eb; } /* Light gray for headers/zero values */
+        
+        /* Specific optical colors (Brighter Blue for 1310nm, Yellow for 1550nm) */
+        .output-1310 { color: #3b82f6; } 
+        .output-1550 { color: #facc15; }
+
+        /* Ensure inputs in the grid are concise */
+        .output-level-input {
+            padding: 0.5rem;
+            font-size: 1rem;
+        }
+        
+        /* NEW: Tilt Chart Specific Styles */
+        #tiltChartView {
+            display: none; /* Initially hide the tilt view */
+        }
+        
+        /* NEW: Optical Budget Specific Styles */
+        #opticalBudgetView {
+            display: none; /* Initially hide the optical view */
+        }
+
+        /* ✅ FIX: Utility hidden class */
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- Navigation Bar (Control Panel Header) -->
+    <nav class="bg-[#161b22] shadow-xl sticky top-0 z-10 border-b border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-start h-16">
+                
+                <!-- Retro TV Logo SVG -->
+                <div class="flex-shrink-0 flex items-center">
+                    <svg class="w-8 h-8 mr-2" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- TV Body (Darker color) -->
+                        <rect x="4" y="6" width="24" height="20" rx="3" fill="#30363d" stroke="#4a5568" stroke-width="2"/>
+                        <!-- Screen (Teal/Green glow inside) -->
+                        <rect x="7" y="9" width="18" height="12" rx="2" fill="#000000" stroke="#4ECDC4" stroke-width="1.5"/>
+                        <!-- Internal Green Trace (Like the old wave) -->
+                        <path d="M 8 18 L 13 14 L 17 17 L 21 12 L 24 18"
+                              fill="none"
+                              stroke="#84cc16" 
+                              stroke-width="1.5"
+                              stroke-linejoin="round"
+                              stroke-linecap="round"/>
+                        <!-- Knob 1 (Volume/Tuning) -->
+                        <circle cx="27" cy="10" r="1.5" fill="#a0aec0"/>
+                        <!-- Knob 2 (Power/Channel) -->
+                        <circle cx="27" cy="22" r="1.5" fill="#a0aec0"/>
+                    </svg>
+                    <!-- Logo Text: Mario Calc (UPDATED) -->
+                    <span class="text-xl font-bold text-gray-300">
+                        <span class="text-[#4ECDC4]">Mario</span> <span class="text-white">Calc</span>
+                    </span>
+                </div>
+                <!-- END LOGO -->
+                
+                <div class="ml-10 flex items-baseline space-x-4">
+                    <!-- Link 1: RF Span Loss Calculator -->
+                    <button id="spanLossBtn" class="px-3 py-2 rounded-lg text-sm font-medium text-gray-900 bg-[#4ECDC4] hover:bg-[#34a8a0] transition duration-150 shadow-md">
+                        RF Span Loss
+                    </button>
+                    <!-- Link 2: Tilt Calculator -->
+                    <button id="tiltChartBtn" class="px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-[#30363d] transition duration-150">
+                        Tilt Chart
+                    </button>
+                    <!-- Link 3: Optical Budget Calculator (NEW) -->
+                    <button id="opticalBudgetBtn" class="px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-[#30363d] transition duration-150">
+                        Optical Budget
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content Wrapper -->
+    <div class="content-wrapper">
+        
+        <!-- ============================================== -->
+        <!-- 1. RF SPAN LOSS CALCULATOR VIEW (Existing Content) -->
+        <!-- ============================================== -->
+        <div id="spanLossView" class="calculator p-6"> 
+            <h2 class="text-2xl font-bold text-white mb-6 text-center">RF Span Loss Calculator</h2>
+
+            <!-- Input Form (Control Panel Section) -->
+            <div class="space-y-4" id="input-form">
+                
+                <!-- Input 1: Required Output Levels for all 3 Frequencies -->
+                <div class="input-group">
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Target Output Levels (dBmV)</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label for="outputLevel111" class="block text-xs text-gray-500 mb-1 text-center">111 MHz</label>
+                            <input type="number" id="outputLevel111" value="33" class="input-field output-level-input text-center" step="0.01">
+                        </div>
+                        <div>
+                            <label for="outputLevel999" class="block text-xs text-gray-500 mb-1 text-center">999 MHz</label>
+                            <input type="number" id="outputLevel999" value="47" class="input-field output-level-input text-center" step="0.01">
+                        </div>
+                        <div>
+                            <label for="outputLevel1215" class="block text-xs text-gray-500 mb-1 text-center">1215 MHz</label>
+                            <input type="number" id="outputLevel1215" value="51" class="input-field output-level-input text-center" step="0.01">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input 2: Cable Run Distance -->
+                <div class="input-group">
+                    <label for="distance" class="block text-sm font-medium text-gray-400 mb-1">Cable Run Distance (feet)</label>
+                    <input type="number" id="distance" placeholder="e.g. 2357" class="input-field" min="0">
+                </div>
+
+                <!-- Input 3: Cable Type -->
+                <div class="input-group">
+                    <label for="cableType" class="block text-sm font-medium text-gray-400 mb-1">Cable Type</label>
+                    <select id="cableType" class="select-field">
+                        <option value="P3 500">P3 500</option>
+                        <option value="P3 625">P3 625</option>
+                        <option value="P3 750">P3 750</option>
+                        <option value="P3 875" selected>P3 875</option>
+                        <option value="MC2 500">MC2 500</option>
+                        <option value="MC2 650">MC2 650</option>
+                        <option value="MC2 750">MC2 750</option>
+                        <option value="QR 540">QR 540</option>
+                        <option value="QR 715">QR 715</option>
+                        <option value="QR 860">QR 860</option>
+                    </select>
+                </div>
+
+                <!-- Input 4: Passive Devices (Refactored for multiple selection) -->
+                <div class="input-group">
+                    <label for="singlePassiveSelect" class="block text-sm font-medium text-gray-400 mb-1">Select and Add Passive Devices</label>
+                    <div class="flex space-x-2 mb-3">
+                        <select id="singlePassiveSelect" class="select-field flex-grow">
+                            <option value="DC8 (THROUGH)">DC8 (THROUGH)</option> 
+                            <option value="DC8 (TAP)">DC8 (TAP)</option>
+                            <option value="DC12 (THROUGH)">DC12 (THROUGH)</option>
+                            <option value="DC12 (TAP)">DC12 (TAP)</option>
+                            <option value="2W SPLIT">2W SPLIT</option>
+                            <option value="3W SPLIT (LOW LOSS)">3W SPLIT (LOW LOSS)</option>
+                            <option value="3W SPLIT (HIGH LOSS)">3W SPLIT (HIGH LOSS)</option>
+                            <option value="3W SPLIT (BALANCED)">3W SPLIT (BALANCED)</option>
+                            <option value="PI">PI</option>
+                            <option value="2P 4V">2P 4V</option> 
+                            <option value="2P 8V">2P 8V</option>
+                            <option value="2P 11V">2P 11V</option>
+                            <option value="2P 14V">2P 14V</option>
+                            <option value="2P 17V">2P 17V</option>
+                            <option value="2P 20V">2P 20V</option>
+                            <option value="2P 23V">2P 23V</option>
+                            <option value="2P 26V">2P 26V</option>
+                            <option value="2P 29V">2P 29V</option>
+                            <option value="4P 8V">4P 8V</option>
+                            <option value="4P 11V">4P 11V</option>
+                            <option value="4P 14V">4P 14V</option>
+                            <option value="4P 17V">4P 17V</option>
+                            <option value="4P 20V">4P 20V</option>
+                            <option value="4P 23V">4P 23V</option>
+                            <option value="4P 26V">4P 26V</option>
+                            <option value="4P 29V">4P 29V</option>
+                            <option value="8P 12V">8P 12V</option>
+                            <option value="8P 15V">8P 15V</option>
+                        </select>
+                        <button id="addPassiveBtn" class="px-5 py-2 bg-[#4ECDC4] hover:bg-[#34a8a0] active:bg-[#287d76] text-gray-900 font-semibold rounded-lg transition duration-150 ease-in-out whitespace-nowrap shadow-lg">
+                            Add Device
+                        </button>
+                    </div>
+                    
+                    <!-- Display of currently added devices -->
+                    <div class="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                        <label class="block text-sm font-medium text-gray-400 mb-2">Current Span Devices:</label>
+                        <div id="added-passives-list" class="space-y-1 text-sm text-gray-300 min-h-[2rem]">
+                            <p class="text-gray-500 italic text-center text-xs" id="empty-passives-message">No devices added yet.</p>
+                        </div>
+                    </div>
+
+                    <!-- CLEAR BUTTON -->
+                    <button id="clearPassivesBtn" class="mt-3 w-full px-4 py-2 bg-red-700 hover:bg-red-800 active:bg-red-900 text-white font-semibold rounded-lg transition duration-150 ease-in-out shadow-md">
+                        Clear All Devices
+                    </button>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Add multiple instances of a device (e.g., two splitters). Click the 'x' to remove.
+                    </p>
+                </div>
+                
+            </div>
+
+            <!-- Spectrum Analyzer Display (Outputs) -->
+            <div class="spectrum-display mt-8 space-y-4">
+                <div class="display-content space-y-4">
+                    
+                    <!-- Frequency Header Row -->
+                    <div class="grid grid-cols-4 gap-2 text-gray-400 font-semibold text-sm border-b border-gray-700 pb-2">
+                        <div></div>
+                        <div class="text-center">111 MHz</div>
+                        <div class="text-center">999 MHz</div>
+                        <div class="text-center">1215 MHz</div>
+                    </div>
+
+                    <!-- Cable Loss Row -->
+                    <div class="grid grid-cols-4 gap-2 items-center">
+                        <div class="text-md text-gray-400 font-medium">Cable Loss (dB):</div>
+                        <!-- Changed to use output-value-loss (now yellow) -->
+                        <div id="cable-loss-111" class="text-md font-extrabold output-value-loss text-center">0.00</div>
+                        <div id="cable-loss-999" class="text-md font-extrabold output-value-loss text-center">0.00</div>
+                        <div id="cable-loss-1215" class="text-md font-extrabold output-value-loss text-center">0.00</div>
+                    </div>
+                    
+                    <!-- Passive Loss Breakdown (text-center) -->
+                    <div class="pt-2 text-md text-gray-300 font-bold border-t border-gray-700 text-center">Insertion Loss Breakdown:</div>
+                    <div id="passive-loss-details" class="space-y-1">
+                        <!-- Dynamic passive detail rows will be injected here by JavaScript -->
+                    </div>
+
+                    <!-- Total Passive Loss Summary Row -->
+                    <div class="grid grid-cols-4 gap-2 items-center pt-3 border-t border-gray-700">
+                        <div class="text-xl text-gray-400 font-medium">Total Insertion Loss (dB):</div>
+                        <!-- Color applied dynamically: default white if 0, yellow/loss otherwise -->
+                        <div id="total-passive-loss-111" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-passive-loss-999" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-passive-loss-1215" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                    </div>
+
+
+                    <!-- Total Loss Row -->
+                    <div class="grid grid-cols-4 gap-2 items-center pt-3 border-t border-gray-700">
+                        <div class="text-xl text-gray-400 font-medium">Total Span Loss (dB):</div>
+                        <!-- Color applied dynamically: default white if 0, yellow/loss otherwise -->
+                        <div id="total-loss-111" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-loss-999" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-loss-1215" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                    </div>
+
+                    <!-- Required Input Row (Conditional Formatting Applied in JS) -->
+                    <div class="grid grid-cols-4 gap-2 items-center pt-3 border-t border-gray-700">
+                        <div class="text-xl text-gray-400 font-medium">Input (dBmV):</div>
+                        <!-- Color applied dynamically based on value (Green/Yellow/Red) -->
+                        <div id="input-level-111" class="text-3xl font-extrabold output-value-good text-center">0.00</div>
+                        <div id="input-level-999" class="text-3xl font-extrabold output-value-good text-center">0.00</div>
+                        <div id="input-level-1215" class="text-3xl font-extrabold output-value-good text-center">0.00</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- 2. AMPLIFIER TILT CALCULATOR VIEW (Existing Content) -->
+        <!-- ============================================== -->
+        <div id="tiltChartView" class="calculator p-6">
+            <h2 class="text-2xl font-bold text-white mb-6 text-center">Amplifier Tilt & Response</h2>
+
+            <!-- Tilt Input Section -->
+            <div class="space-y-4 mb-8">
+                <p class="text-gray-400 text-sm italic">Define the linear response curve using two anchor points. All intermediate frequencies will be interpolated.</p>
+
+                <!-- Anchor Point Inputs -->
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Low Frequency Anchor Point (111 MHz) -->
+                    <div class="bg-[#1a2027] p-4 rounded-lg border border-gray-700">
+                        <label class="block text-md font-medium text-gray-300 mb-2">Low Anchor Point (111 MHz)</label>
+                        <div class="flex items-center space-x-2">
+                             <span class="text-gray-500 font-bold w-1/3">Level (dBmV)</span>
+                            <input type="number" id="tiltLevelLow" value="33.0" class="input-field output-level-input text-center flex-grow" step="0.1">
+                        </div>
+                    </div>
+
+                    <!-- High Frequency Anchor Point (1218 MHz) -->
+                    <div class="bg-[#1a2027] p-4 rounded-lg border border-gray-700">
+                        <label class="block text-md font-medium text-gray-300 mb-2">High Anchor Point (1218 MHz)</label>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-gray-500 font-bold w-1/3">Level (dBmV)</span>
+                            <input type="number" id="tiltLevelHigh" value="51.0" class="input-field output-level-input text-center flex-grow" step="0.1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chart Display -->
+            <div class="spectrum-display mb-8">
+                <div class="display-content">
+                    <h3 class="text-xl font-bold text-[#4ECDC4] mb-4 text-center">Frequency Response Plot</h3>
+                    <div class="h-64 sm:h-80 w-full">
+                        <canvas id="tiltChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Table -->
+            <h3 class="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">Calculated Output Levels</h3>
+            <div class="overflow-x-auto rounded-lg border border-gray-700">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-[#161b22]">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Frequency (MHz)</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Output Level (dBmV)</th>
+                            <!-- Tilt reference is now 111 MHz -->
+                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Tilt vs 111 MHz (dB)</th> 
+                        </tr>
+                    </thead>
+                    <tbody id="tiltResultsTableBody" class="bg-gray-800 divide-y divide-gray-700 text-sm">
+                        <!-- Results populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+
+        <!-- ============================================== -->
+        <!-- 3. OPTICAL BUDGET CALCULATOR VIEW (NEW CONTENT) -->
+        <!-- ============================================== -->
+        <div id="opticalBudgetView" class="calculator p-6">
+            <h2 class="text-2xl font-bold text-white mb-6 text-center">Optical Loss Budget (dB)</h2>
+            <p class="text-gray-400 text-sm italic mb-6">Calculates end-to-end loss based on industry standard attenuation for single-mode fiber.</p>
+
+            <!-- Input Section (Balanced 2x2 grid) -->
+            <div class="space-y-4 mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    <!-- 1. Fiber Distance -->
+                    <div class="input-group">
+                        <label for="opticalDistanceKm" class="block text-sm font-medium text-gray-400 mb-1">Fiber Distance (km)</label>
+                        <input type="number" id="opticalDistanceKm" placeholder="e.g. 15.5" class="input-field text-center" min="0" step="0.1">
+                    </div>
+                    
+                    <!-- 2. Connectors -->
+                    <div class="input-group">
+                        <!-- FIXED: Removed LaTeX to display constants as plain text -->
+                        <label for="opticalConnectors" class="block text-sm font-medium text-gray-400 mb-1">Number of Connections (0.75 dB/conn)</label>
+                        <input type="number" id="opticalConnectors" placeholder="e.g. 2 or 0" class="input-field text-center" min="0" step="1">
+                    </div>
+
+                    <!-- 3. Splices -->
+                    <div class="input-group">
+                        <!-- FIXED: Removed LaTeX to display constants as plain text -->
+                        <label for="opticalSplices" class="block text-sm font-medium text-gray-400 mb-1">Number of Splices (0.1 dB/splice)</label>
+                        <input type="number" id="opticalSplices" placeholder="e.g. 4 or 0" class="input-field text-center" min="0" step="1">
+                    </div>
+
+                    <!-- 4. MUX/DEMUX Toggle (UPDATED FOR CONSISTENT HEIGHT) -->
+                    <div class="input-group">
+                        <!-- Standard Label -->
+                        <label for="opticalMuxed" class="block text-sm font-medium text-gray-400 mb-1">Include MUX/DEMUX Loss (3.0 dB)</label>
+                        <!-- Mimic Input Field for consistent height/styling -->
+                        <div class="input-field flex items-center justify-between">
+                            <span class="text-gray-300 select-none text-base">Apply 3.0 dB MUX/DEMUX factor</span>
+                            <input type="checkbox" id="opticalMuxed" class="h-6 w-6 text-[#4ECDC4] rounded border-gray-600 focus:ring-[#4ECDC4] bg-gray-800 cursor-pointer">
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            
+            <!-- Output Section -->
+            <div class="overflow-x-auto rounded-lg border border-gray-700">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-[#161b22]">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Loss Component</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium output-1310 uppercase tracking-wider">1310 nm (dB)</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium output-1550 uppercase tracking-wider">1550 nm (dB)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-gray-800 divide-y divide-gray-700 text-sm font-mono">
+                        <!-- Fiber Loss Row -->
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-4 py-3 whitespace-nowrap text-left font-medium text-gray-300">Fiber Attenuation</td>
+                            <td id="fiberLoss1310" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1310">0.00</td>
+                            <td id="fiberLoss1550" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1550">0.00</td>
+                        </tr>
+                        <!-- Connection Loss Row -->
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-4 py-3 whitespace-nowrap text-left font-medium text-gray-300">Connector Loss</td>
+                            <td id="connLoss1310" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1310">0.00</td>
+                            <td id="connLoss1550" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1550">0.00</td>
+                        </tr>
+                        <!-- Splice Loss Row -->
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-4 py-3 whitespace-nowrap text-left font-medium text-gray-300">Splice Loss</td>
+                            <td id="spliceLoss1310" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1310">0.00</td>
+                            <td id="spliceLoss1550" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1550">0.00</td>
+                        </tr>
+                        <!-- MUX/DEMUX Loss Row (NEW) -->
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-4 py-3 whitespace-nowrap text-left font-medium text-gray-300">MUX/DEMUX Loss</td>
+                            <td id="muxLoss1310" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1310">0.00</td>
+                            <td id="muxLoss1550" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1550">0.00</td>
+                        </tr>
+                        <!-- Total Budget Row -->
+                        <tr class="bg-[#1a2027] border-t-2 border-[#4ECDC4]">
+                            <td class="px-4 py-4 whitespace-nowrap text-left text-xl font-extrabold text-[#4ECDC4]">TOTAL OPTICAL BUDGET (dB)</td>
+                            <td id="totalBudget1310" class="px-4 py-4 whitespace-nowrap text-center text-3xl font-extrabold output-1310">0.00</td>
+                            <td id="totalBudget1550" class="px-4 py-4 whitespace-nowrap text-center text-3xl font-extrabold output-1550">0.00</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global state to store all added passive devices (allowing duplicates)
+        let addedPassiveDevices = [];
+
+        // --- View Management Globals ---
+        const spanLossView = document.getElementById('spanLossView');
+        const tiltChartView = document.getElementById('tiltChartView');
+        const opticalBudgetView = document.getElementById('opticalBudgetView'); 
+        
+        const spanLossBtn = document.getElementById('spanLossBtn');
+        const tiltChartBtn = document.getElementById('tiltChartBtn');
+        const opticalBudgetBtn = document.getElementById('opticalBudgetBtn'); 
+        
+        let currentView = 'spanLoss';
+        
+        // Tilt chart instance global
+        let tiltChartInstance = null;
+
+        // UPDATED: Anchor Frequencies
+        const TILT_ANCHOR_LOW = 111;
+        const TILT_ANCHOR_HIGH = 1218; // Calculation endpoint remains 1218 MHz
+
+        // UPDATED: Frequencies to calculate for the Tilt Chart (54 MHz removed)
+        const TILT_FREQUENCIES = [
+            111, 207, 321, 429, 555, 633, 750, 873, 999, 1215
+        ].sort((a, b) => a - b); // Ensure sorted for the table/chart
+
+        // --- DOM Elements (Inputs) for Span Loss ---
+        const outputLevel111 = document.getElementById('outputLevel111');
+        const outputLevel999 = document.getElementById('outputLevel999');
+        const outputLevel1215 = document.getElementById('outputLevel1215');
+        const distanceInput = document.getElementById('distance');
+        const cableTypeSelect = document.getElementById('cableType');
+        
+        // Refactored passive elements
+        const singlePassiveSelect = document.getElementById('singlePassiveSelect');
+        const addPassiveBtn = document.getElementById('addPassiveBtn');
+        const clearPassivesBtn = document.getElementById('clearPassivesBtn'); 
+        
+        // --- DOM Elements (Inputs) for Tilt Chart ---
+        const tiltLevelLowInput = document.getElementById('tiltLevelLow');
+        const tiltLevelHighInput = document.getElementById('tiltLevelHigh');
+        const tiltResultsTableBody = document.getElementById('tiltResultsTableBody');
+        
+        // --- DOM Elements (Inputs) for Optical Budget (NEW) ---
+        const opticalDistanceKm = document.getElementById('opticalDistanceKm');
+        const opticalConnectors = document.getElementById('opticalConnectors');
+        const opticalSplices = document.getElementById('opticalSplices');
+        const opticalMuxed = document.getElementById('opticalMuxed'); // NEW
+
+        // --- DOM Elements (Outputs) for Optical Budget (NEW) ---
+        const fiberLoss1310 = document.getElementById('fiberLoss1310');
+        const connLoss1310 = document.getElementById('connLoss1310');
+        const spliceLoss1310 = document.getElementById('spliceLoss1310');
+        const muxLoss1310 = document.getElementById('muxLoss1310'); // NEW
+        const totalBudget1310 = document.getElementById('totalBudget1310');
+
+        const fiberLoss1550 = document.getElementById('fiberLoss1550');
+        const connLoss1550 = document.getElementById('connLoss1550');
+        const spliceLoss1550 = document.getElementById('spliceLoss1550');
+        const muxLoss1550 = document.getElementById('muxLoss1550'); // NEW
+        const totalBudget1550 = document.getElementById('totalBudget1550');
+        
+
+        // Map frequencies to their DOM elements
+        const FREQUENCY_CONFIG = {
+            "111": { 
+                outputInput: outputLevel111, 
+                cableLossDisplay: document.getElementById('cable-loss-111'), 
+                totalPassiveLossDisplay: document.getElementById('total-passive-loss-111'), 
+                totalLossDisplay: document.getElementById('total-loss-111'),
+                inputLevelDisplay: document.getElementById('input-level-111')
+            },
+            "999": { 
+                outputInput: outputLevel999, 
+                cableLossDisplay: document.getElementById('cable-loss-999'), 
+                totalPassiveLossDisplay: document.getElementById('total-passive-loss-999'), 
+                totalLossDisplay: document.getElementById('total-loss-999'),
+                inputLevelDisplay: document.getElementById('input-level-999')
+            },
+            "1215": { 
+                outputInput: outputLevel1215, 
+                cableLossDisplay: document.getElementById('cable-loss-1215'), 
+                totalPassiveLossDisplay: document.getElementById('total-passive-loss-1215'), 
+                totalLossDisplay: document.getElementById('total-loss-1215'),
+                inputLevelDisplay: document.getElementById('input-level-1215')
+            }
+        };
+        const FREQUENCIES = Object.keys(FREQUENCY_CONFIG); // ["111", "999", "1215"]
+
+        // --- Reference Data ---
+
+        // Hardline Attenuation by Frequency per 100ft (dB)
+        const CABLE_LOSS_DATA = {
+            "P3 500": { "111": 0.83, "999": 2.52, "1215": 2.78 },
+            "P3 625": { "111": 0.68, "999": 2.07, "1215": 2.28 },
+            "P3 750": { "111": 0.58, "999": 1.74, "1215": 1.92 },
+            "P3 875": { "111": 0.51, "999": 1.53, "1215": 1.69 },
+            "MC2 500": { "111": 0.73, "999": 2.22, "1215": 2.45 },
+            "MC2 650": { "111": 0.6, "999": 1.82, "1215": 2.00 },
+            "MC2 750": { "111": 0.5, "999": 1.51, "1215": 1.66 },
+            "QR 540": { "111": 0.72, "999": 2.19, "1215": 2.42 },
+            "QR 715": { "111": 0.58, "999": 1.75, "1215": 1.93 },
+            "QR 860": { "111": 0.48, "999": 1.44, "1215": 1.59 },
+        };
+
+        // Passive Insertion Loss by Frequency (dB)
+        const PASSIVE_LOSS_DATA = {
+            "2P 4V": { "111": 0, "999": 0, "1215": 0 },
+            "2P 8V": { "111": 3.3, "999": 3.8, "1215": 4.4 },
+            "2P 11V": { "111": 1.3, "999": 2.6, "1215": 3.0 },
+            "2P 14V": { "111": 0.8, "999": 1.9, "1215": 2.3 },
+            "2P 17V": { "111": 0.8, "999": 1.3, "1215": 1.7 },
+            "2P 20V": { "111": 0.5, "999": 1.4, "1215": 1.6 },
+            "2P 23V": { "111": 0.4, "999": 1.2, "1215": 1.6 },
+            "2P 26V": { "111": 0.4, "999": 1.2, "1215": 1.6 },
+            "2P 29V": { "111": 0.4, "999": 1.2, "1215": 1.6 },
+            "4P 8V": { "111": 0, "999": 0, "1215": 0 },
+            "4P 11V": { "111": 3.3, "999": 3.9, "1215": 4.3 },
+            "4P 14V": { "111": 1.4, "999": 2.6, "1215": 3.3 },
+            "4P 17V": { "111": 0.9, "999": 2.0, "1215": 2.2 },
+            "4P 20V": { "111": 0.8, "999": 1.5, "1215": 1.7 },
+            "4P 23V": { "111": 0.6, "999": 1.3, "1215": 1.6 },
+            "4P 26V": { "111": 0.4, "999": 1.1, "1215": 1.4 },
+            "4P 29V": { "111": 0.4, "999": 1.1, "1215": 1.4 },
+            "8P 12V": { "111": 0, "999": 0, "1215": 0 },
+            "8P 15V": { "111": 3.3, "999": 4.0, "1215": 4.5 },
+            "DC8 (THROUGH)": { "111": 1.9, "999": 3.0, "1215": 3.5 },
+            "DC8 (TAP)": { "111": 8.3, "999": 8.5, "1215": 8.9 },
+            "DC12 (THROUGH)": { "111": 1.2, "999": 2.4, "1215": 2.9 },
+            "DC12 (TAP)": { "111": 12.3, "999": 12.5, "1215": 12.7 },
+            "2W SPLIT": { "111": 3.6, "999": 4.9, "1215": 5.4 },
+            "3W SPLIT (LOW LOSS)": { "111": 4.1, "999": 5.4, "1215": 5.8 },
+            "3W SPLIT (HIGH LOSS)": { "111": 7.4, "999": 9.0, "1215": 9.3 },
+            "3W SPLIT (BALANCED)": { "111": 6.3, "999": 7.7, "1215": 8.7 },
+            "PI": { "111": 0.5, "999": 1.0, "1215": 1.6 },
+        };
+        
+        // --- Optical Loss Constants (dB) ---
+        const LOSS_FIBER_1310 = 0.35; // dB/km (Standard SMF loss)
+        const LOSS_FIBER_1550 = 0.22; // dB/km (Standard SMF loss)
+        const LOSS_CONNECTOR = 0.75; // dB per connector
+        const LOSS_SPLICE = 0.1;     // dB per fusion splice
+        const LOSS_MUX_DEMUX = 3.0;  // dB (Typical insertion loss for a MUX/DEMUX pair)
+
+        // --- Passive Device Management Functions (Span Loss) ---
+        
+        /**
+         * Adds the currently selected device to the global array.
+         */
+        function addPassiveDevice() {
+            const selectedDevice = singlePassiveSelect.value;
+            if (selectedDevice) {
+                addedPassiveDevices.push(selectedDevice);
+                renderAddedPassives();
+                calculateSpanLoss();
+            }
+        }
+
+        /**
+         * Removes a device by its index from the global array.
+         * @param {number} index - The index of the device to remove.
+         */
+        function removePassiveDevice(index) {
+            addedPassiveDevices.splice(index, 1);
+            renderAddedPassives();
+            calculateSpanLoss();
+        }
+
+        /**
+         * Clears all devices from the global array.
+         */
+        function clearPassiveSelection(event) {
+            if (event) event.preventDefault(); 
+            addedPassiveDevices = [];
+            renderAddedPassives(); // Update UI to show empty state
+            calculateSpanLoss(); // Recalculate everything after clearing
+        }
+
+        /**
+         * Renders the list of added devices in the UI with remove buttons.
+         * (Robust implementation that recreates the empty message when needed)
+         */
+        function renderAddedPassives() {
+            const addedPassivesList = document.getElementById('added-passives-list');
+            
+            // Clear existing list
+            addedPassivesList.innerHTML = '';
+            
+            // If no devices, show a friendly empty message (recreated each time)
+            if (addedPassiveDevices.length === 0) {
+                addedPassivesList.innerHTML = `
+                    <p class="text-gray-500 italic text-center text-xs">No devices added yet.</p>
+                `;
+                return;
+            }
+            
+            // Otherwise render each device with a remove button
+            addedPassiveDevices.forEach((device, index) => {
+                const deviceElement = document.createElement('div');
+                deviceElement.className = 'flex justify-between items-center bg-gray-700 p-2 rounded-md';
+                deviceElement.innerHTML = `
+                    <span class="text-gray-200">${device}</span>
+                    <button data-index="${index}" 
+                            class="remove-btn text-xs text-red-400 hover:text-red-300 font-bold ml-2 transition-colors duration-150 p-1 rounded-full w-6 h-6 flex items-center justify-center">
+                        &times;
+                    </button>
+                `;
+                addedPassivesList.appendChild(deviceElement);
+            });
+            
+            // Add click listener to the newly created remove buttons
+            addedPassivesList.querySelectorAll('.remove-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = parseInt(e.currentTarget.getAttribute('data-index'));
+                    removePassiveDevice(index);
+                });
+            });
+        }
+        
+        // --- Shared Utility Functions ---
+
+        /**
+         * Applies conditional color styling based on the calculated input level.
+         * @param {HTMLElement} element - The DOM element to style.
+         * @param {number} inputLevel - The calculated input level in dBmV.
+         */
+        function applyInputColor(element, inputLevel) {
+            // Clear existing color classes
+            element.classList.remove('output-value-good', 'output-value-marginal', 'output-value-critical');
+
+            // Apply new color based on thresholds
+            if (inputLevel < 4.00) {
+                // Critical: Below 4 dBmV (Red)
+                element.classList.add('output-value-critical');
+            } else if (inputLevel < 5.00) {
+                // Warning: Between 4 dBmV and 5 dBmV (Yellow/Marginal)
+                element.classList.add('output-value-marginal');
+            } else {
+                // Nominal/Good: 5 dBmV and above (Green)
+                element.classList.add('output-value-good');
+            }
+        }
+        
+        /**
+         * Applies conditional color styling based on the calculated loss value (0 loss is white).
+         * @param {HTMLElement} element - The DOM element to style (Total Loss or Total Passive Loss).
+         * @param {number} lossValue - The calculated loss (positive number).
+         */
+        function applyLossColor(element, lossValue) {
+            // Remove existing loss color classes
+            element.classList.remove('output-value-loss', 'output-value-default');
+
+            // Add default gray class if loss is effectively zero, otherwise add yellow/loss
+            if (lossValue < 0.005) { 
+                element.classList.add('output-value-default');
+            } else {
+                element.classList.add('output-value-loss');
+            }
+        }
+
+        // --- Span Loss Calculation and Display Functions ---
+
+        /**
+         * Generates and injects the HTML rows detailing the grouped loss for each passive device type.
+         */
+        function displayPassiveLossDetails() {
+            const passiveDetailsContainer = document.getElementById('passive-loss-details'); 
+            // Clear previous details
+            passiveDetailsContainer.innerHTML = '';
+            
+            if (addedPassiveDevices.length === 0) {
+                 passiveDetailsContainer.innerHTML = `
+                    <div class="grid grid-cols-4 gap-2 items-center text-sm">
+                        <div class="text-gray-500 font-light italic pl-2 col-span-4 text-center">No passive loss applied.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            // Group devices by type and count occurrences
+            const deviceCounts = addedPassiveDevices.reduce((acc, device) => {
+                acc[device] = (acc[device] || 0) + 1;
+                return acc;
+            }, {});
+
+            let htmlContent = '';
+            
+            for (const passiveType in deviceCounts) {
+                const count = deviceCounts[passiveType];
+                const data = PASSIVE_LOSS_DATA[passiveType];
+                
+                if (data) {
+                    const totalLoss111 = data["111"] * count;
+                    const totalLoss999 = data["999"] * count;
+                    const totalLoss1215 = data["1215"] * count;
+
+                    htmlContent += `
+                        <div class="grid grid-cols-4 gap-2 items-center text-sm">
+                            <div class="text-gray-500 font-light pl-2">(${count}x) ${passiveType}</div>
+                            <!-- Loss details now use output-value-loss (yellow) -->
+                            <div class="output-value-loss text-center">${totalLoss111.toFixed(2)}</div>
+                            <div class="output-value-loss text-center">${totalLoss999.toFixed(2)}</div>
+                            <div class="output-value-loss text-center">${totalLoss1215.toFixed(2)}</div>
+                        </div>
+                    `;
+                }
+            }
+
+            passiveDetailsContainer.innerHTML = htmlContent;
+        }
+
+        /**
+         * Calculates and updates the display for a single, specified frequency.
+         * @param {string} frequency - The frequency key ("111", "999", or "1215").
+         * @param {string[]} selectedPassives - Array of passive device type strings (passed from main function).
+         */
+        function calculateForFrequency(frequency, selectedPassives) {
+            const config = FREQUENCY_CONFIG[frequency];
+            
+            // 1. Get Inputs (some common, some specific to this frequency)
+            const outputLevel = parseFloat(config.outputInput.value) || 0;
+            // Use || 0 to default to 0 if the distance input is empty/NaN (due to blank default)
+            const distance = parseFloat(distanceInput.value) || 0; 
+            const cableType = cableTypeSelect.value;
+            
+            // 2. Calculate Cable Loss
+            let cableLoss = 0;
+            const lossFactor = CABLE_LOSS_DATA[cableType]?.[frequency];
+
+            if (lossFactor !== undefined) {
+                // Formula: Cable Loss (dB) = (Distance (ft) / 100) * Loss Factor (dB/100ft)
+                cableLoss = (distance / 100) * lossFactor;
+            } else {
+                console.error(`Missing loss factor for ${cableType} at ${frequency} MHz.`);
+            }
+            // Cable loss display uses the yellow loss color
+            config.cableLossDisplay.textContent = cableLoss.toFixed(2);
+
+            // 3. Calculate Total Passive Loss (Insertion Loss)
+            let totalPassiveLoss = 0;
+            // Iterate over every instance in the array (this handles duplicates)
+            selectedPassives.forEach(passiveType => {
+                const passiveLoss = PASSIVE_LOSS_DATA[passiveType]?.[frequency];
+                if (passiveLoss !== undefined) {
+                    totalPassiveLoss += passiveLoss;
+                } else {
+                    console.warn(`Passive loss data for ${passiveType} at ${frequency} MHz is missing from the data table (treated as 0 dB).`);
+                }
+            });
+
+            // 4. Update Total Passive Loss Display (Apply color and text format)
+            applyLossColor(config.totalPassiveLossDisplay, totalPassiveLoss);
+            config.totalPassiveLossDisplay.textContent = totalPassiveLoss.toFixed(2);
+
+            // 5. Calculate Total Span Loss
+            const totalLoss = cableLoss + totalPassiveLoss;
+
+            // 6. Calculate Required Input Level (Input = Output Level + Total Loss)
+            const requiredInput = outputLevel - totalLoss; // NOTE: totalLoss is positive dB value, so we ADD it to find the required input level
+
+            // 7. Update Display (Apply color and update text for Total Loss)
+            applyLossColor(config.totalLossDisplay, totalLoss);
+            config.totalLossDisplay.textContent = totalLoss.toFixed(2);
+            
+            // 8. Apply conditional color and update text for Input Level
+            applyInputColor(config.inputLevelDisplay, requiredInput);
+            config.inputLevelDisplay.textContent = requiredInput.toFixed(2);
+        }
+
+        // Main calculation function: runs the calculation for all three frequencies
+        function calculateSpanLoss() {
+            // 1. Update the detailed passive loss view once
+            displayPassiveLossDetails();
+            
+            // 2. Run the calculation for all totals and final inputs
+            FREQUENCIES.forEach(frequency => calculateForFrequency(frequency, addedPassiveDevices));
+        }
+
+
+        // --- Amplifier Tilt Chart Logic ---
+
+        /**
+         * Initializes the Chart.js instance for the tilt calculator.
+         */
+        function setupTiltChart() {
+            const ctx = document.getElementById('tiltChart').getContext('2d');
+            
+            // Check if chart already exists and destroy it
+            if (tiltChartInstance) {
+                tiltChartInstance.destroy();
+            }
+
+            const data = {
+                labels: TILT_FREQUENCIES.map(f => `${f} MHz`), // X-axis labels (Frequencies)
+                datasets: [{
+                    label: 'Output Response (dBmV)',
+                    data: [], // Y-axis data (Output Levels)
+                    borderColor: '#4ECDC4', // Teal color for the trace
+                    backgroundColor: 'rgba(78, 205, 196, 0.2)',
+                    borderWidth: 3,
+                    tension: 0.3, // Curve the line slightly
+                    pointRadius: 5,
+                    fill: false,
+                    pointBackgroundColor: '#fff',
+                    pointHoverBackgroundColor: '#4ECDC4'
+                }]
+            };
+
+            const config = {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return context[0].label;
+                                },
+                                label: function(context) {
+                                    return `Level: ${context.parsed.y.toFixed(2)} dBmV`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Frequency (MHz)',
+                                color: '#9ca3af'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e5e7eb'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Output Level (dBmV)',
+                                color: '#9ca3af'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e5e7eb'
+                            }
+                        }
+                    }
+                }
+            };
+
+            tiltChartInstance = new Chart(ctx, config);
+        }
+
+        /**
+         * Calculates the output level for a given frequency using linear interpolation.
+         * @param {number} F - The target frequency in MHz.
+         * @param {number} Llow - The output level at the low anchor frequency (111 MHz).
+         * @param {number} Lhigh - The output level at the high anchor frequency (1218 MHz).
+         * @returns {number} The calculated output level in dBmV.
+         */
+        function calculateLinearLevel(F, Llow, Lhigh) {
+            // Linear interpolation formula: 
+            // Y = Y1 + (Y2 - Y1) * (X - X1) / (X2 - X1)
+            // Here: Y=Level, X=Frequency, X1=111, Y1=Llow, X2=1218, Y2=Lhigh
+            
+            const F1 = TILT_ANCHOR_LOW;
+            const F2 = TILT_ANCHOR_HIGH;
+            
+            // Handle edge cases where F is outside or exactly on the anchors
+            if (F <= F1) return Llow;
+            if (F >= F2) return Lhigh;
+
+            const slope = (Lhigh - Llow) / (F2 - F1);
+            return Llow + slope * (F - F1);
+        }
+
+        /**
+         * Main function for the Tilt Calculator: reads inputs, calculates all levels, and updates UI.
+         */
+        function calculateAndRenderTilt() {
+            const Llow = parseFloat(tiltLevelLowInput.value) || 0;
+            const Lhigh = parseFloat(tiltLevelHighInput.value) || 0;
+
+            const results = [];
+            const chartDataPoints = [];
+
+            // Calculate the tilt reference level (which is the level at the low anchor, 111 MHz)
+            // This is equivalent to Llow, but calculating it here ensures consistency.
+            const tiltReferenceLevel = calculateLinearLevel(TILT_ANCHOR_LOW, Llow, Lhigh); 
+
+            TILT_FREQUENCIES.forEach(F => {
+                const level = calculateLinearLevel(F, Llow, Lhigh);
+                
+                // Tilt is the difference in level relative to the 111 MHz level
+                const tiltVsReference = level - tiltReferenceLevel;
+
+                results.push({
+                    frequency: F,
+                    level: level,
+                    tilt: tiltVsReference
+                });
+                
+                chartDataPoints.push(level);
+            });
+            
+            // 1. Update the Results Table
+            tiltResultsTableBody.innerHTML = '';
+            results.forEach(result => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-700 transition duration-100';
+                
+                // Determine color for the output level
+                let levelClass = 'text-[#84cc16]'; // Default good green color for the level
+                if (result.level < 4.00) levelClass = 'text-red-400';
+                else if (result.level < 5.00) levelClass = 'text-yellow-400';
+
+                tr.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap text-left text-gray-300">${result.frequency} MHz</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-right font-bold ${levelClass}">${result.level.toFixed(2)}</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-right font-medium text-gray-200">${result.tilt.toFixed(02)}</td>
+                `;
+                tiltResultsTableBody.appendChild(tr);
+            });
+
+            // 2. Update the Chart
+            if (!tiltChartInstance) {
+                setupTiltChart(); // Initialize if not done already
+            }
+            // Update labels and data
+            tiltChartInstance.data.labels = TILT_FREQUENCIES.map(f => `${f} MHz`);
+            tiltChartInstance.data.datasets[0].data = chartDataPoints;
+            tiltChartInstance.update();
+        }
+        
+        // --- Optical Budget Calculation Logic (NEW) ---
+
+        /**
+         * Calculates and updates the optical loss budget table.
+         */
+        function calculateOpticalBudget() {
+            // Use parseFloat/parseInt with || 0 to safely handle empty inputs
+            const distance = parseFloat(opticalDistanceKm.value) || 0;
+            const connectors = parseInt(opticalConnectors.value) || 0;
+            const splices = parseInt(opticalSplices.value) || 0;
+            const isMuxed = opticalMuxed.checked; // NEW INPUT
+
+            // MUX Loss Calculation
+            const muxLoss = isMuxed ? LOSS_MUX_DEMUX : 0; 
+
+            // --- 1310nm Calculations ---
+            const fiberLoss_1310 = distance * LOSS_FIBER_1310;
+            const connLoss_1310 = connectors * LOSS_CONNECTOR;
+            const spliceLoss_1310 = splices * LOSS_SPLICE;
+            const totalBudget_1310 = fiberLoss_1310 + connLoss_1310 + spliceLoss_1310 + muxLoss; // ADDED MUX LOSS
+
+            // --- 1550nm Calculations ---
+            const fiberLoss_1550 = distance * LOSS_FIBER_1550;
+            // Note: Connector/Splice loss factors are typically independent of wavelength
+            const connLoss_1550 = connectors * LOSS_CONNECTOR; 
+            const spliceLoss_1550 = splices * LOSS_SPLICE; 
+            const totalBudget_1550 = fiberLoss_1550 + connLoss_1550 + spliceLoss_1550 + muxLoss; // ADDED MUX LOSS
+
+            // Update DOM for 1310nm
+            fiberLoss1310.textContent = fiberLoss_1310.toFixed(02);
+            connLoss1310.textContent = connLoss_1310.toFixed(02);
+            spliceLoss1310.textContent = spliceLoss_1310.toFixed(02);
+            muxLoss1310.textContent = muxLoss.toFixed(02); // NEW
+            totalBudget1310.textContent = totalBudget_1310.toFixed(02);
+            
+            // Update DOM for 1550nm
+            fiberLoss1550.textContent = fiberLoss_1550.toFixed(02);
+            connLoss1550.textContent = connLoss_1550.toFixed(02);
+            spliceLoss1550.textContent = spliceLoss_1550.toFixed(02);
+            muxLoss1550.textContent = muxLoss.toFixed(02); // NEW
+            totalBudget1550.textContent = totalBudget_1550.toFixed(02);
+        }
+
+        // --- View Switching Logic (UPDATED for 3 views) ---
+        function switchView(viewName) {
+            currentView = viewName;
+            
+            // 1. Hide all views
+            spanLossView.style.display = 'none';
+            tiltChartView.style.display = 'none';
+            opticalBudgetView.style.display = 'none'; 
+
+            // 2. Define the button activation utility
+            const activateButton = (btn) => {
+                btn.classList.add('bg-[#4ECDC4]', 'text-gray-900', 'hover:bg-[#34a8a0]');
+                btn.classList.remove('text-gray-300', 'hover:bg-[#30363d]');
+            };
+
+            // 3. Reset all buttons and activate the current one
+            [spanLossBtn, tiltChartBtn, opticalBudgetBtn].forEach(btn => {
+                btn.classList.remove('bg-[#4ECDC4]', 'text-gray-900', 'hover:bg-[#34a8a0]');
+                btn.classList.add('text-gray-300', 'hover:bg-[#30363d]');
+            });
+
+            if (viewName === 'spanLoss') {
+                spanLossView.style.display = 'block';
+                activateButton(spanLossBtn);
+                calculateSpanLoss(); 
+            } else if (viewName === 'tiltChart') {
+                tiltChartView.style.display = 'block';
+                activateButton(tiltChartBtn);
+                calculateAndRenderTilt();
+            } else if (viewName === 'opticalBudget') {
+                opticalBudgetView.style.display = 'block';
+                activateButton(opticalBudgetBtn);
+                calculateOpticalBudget();
+            }
+        }
+
+
+        // ----------------------------------------------------
+        // --- Event Listeners and Initialization ---
+        // ----------------------------------------------------
+
+
+        // Span Loss Event Listeners
+        const spanLossInputs = [
+            outputLevel111, outputLevel999, outputLevel1215, 
+            distanceInput, cableTypeSelect
+        ];
+        
+        spanLossInputs.forEach(input => {
+            input.addEventListener('input', calculateSpanLoss);
+            input.addEventListener('change', calculateSpanLoss);
+        });
+        
+        addPassiveBtn.addEventListener('click', addPassiveDevice);
+        clearPassivesBtn.addEventListener('click', clearPassiveSelection);
+
+
+        // Tilt Chart Event Listeners
+        tiltLevelLowInput.addEventListener('input', calculateAndRenderTilt);
+        tiltLevelHighInput.addEventListener('input', calculateAndRenderTilt);
+        
+        
+        // Optical Budget Event Listeners (NEW)
+        const opticalInputs = [opticalDistanceKm, opticalConnectors, opticalSplices, opticalMuxed];
+        opticalInputs.forEach(input => {
+            input.addEventListener('input', calculateOpticalBudget);
+            input.addEventListener('change', calculateOpticalBudget);
+        });
+
+        // View Switching Listeners
+        spanLossBtn.addEventListener('click', () => switchView('spanLoss'));
+        tiltChartBtn.addEventListener('click', () => switchView('tiltChart'));
+        opticalBudgetBtn.addEventListener('click', () => switchView('opticalBudget')); 
+
+
+        // Initial Setup
+        setupTiltChart(); // Initialize the chart canvas once
+        renderAddedPassives(); // Show "No devices added yet" initially
+        // Use a short delay to ensure all initial values are rendered on load
+        setTimeout(() => switchView('spanLoss'), 10); 
+    </script>
+</body>
+</html>
