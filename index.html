@@ -329,11 +329,28 @@
                     </div>
 
                     <div class="bg-[#1a2027] p-4 rounded-lg border border-gray-700">
-                        <label class="block text-md font-medium text-gray-300 mb-2">High Anchor Point (1218 MHz)</label>
-                        <div class="flex items-center space-x-2">
-                            <span class="text-gray-500 font-bold w-1/3">Level (dBmV)</span>
-                            <input type="number" id="tiltLevelHigh" value="51.0" class="input-field output-level-input text-center flex-grow" step="1">
-                        </div>
+						<label class="block text-md font-medium text-gray-300 mb-2">High Anchor Point</label>
+
+
+						
+						<div class="flex items-center space-x-2">
+							<span class="text-gray-500 font-bold w-1/3">Level (dBmV)</span>
+							<input type="number" id="tiltLevelHigh" value="48.0" class="input-field output-level-input text-center flex-grow" step="1">
+						</div>
+						
+					<div class="flex items-center justify-between mb-3">
+								<div class="flex items-center space-x-3">
+								<label class="flex items-center space-x-1 text-gray-400 cursor-pointer">
+									<input type="radio" name="tiltHighFreq" value="999" class="text-[#4ECDC4]" />
+								<span>999 MHz</span>
+								</label>
+								<label class="flex items-center space-x-1 text-gray-400 cursor-pointer">
+									<input type="radio" name="tiltHighFreq" value="1218" class="text-[#4ECDC4]" checked />
+									<span>1218 MHz</span>
+								</label>
+							</div>
+						</div>
+
                     </div>
                 </div>
             </div>
@@ -353,8 +370,10 @@
                     <thead class="bg-[#161b22]">
                         <tr>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Frequency (MHz)</th>
-                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Output Level (dBmV)</th>
-                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Tilt vs 111 MHz (dB)</th> 
+							<th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Output Level (dBmV)</th>
+							<th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Analog Output (dBmV)</th> 
+							<th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Tilt vs 111 MHz (dB)</th>
+
                         </tr>
                     </thead>
                     <tbody id="tiltResultsTableBody" class="bg-gray-800 divide-y divide-gray-700 text-sm">
@@ -483,8 +502,8 @@
         let tiltChartInstance = null;
 
         // UPDATED: Anchor Frequencies
-        const TILT_ANCHOR_LOW = 111;
-        const TILT_ANCHOR_HIGH = 1218; // Calculation endpoint remains 1218 MHz
+		let TILT_ANCHOR_LOW = 111;
+		let TILT_ANCHOR_HIGH = 1218; // Default high anchor frequency
 
         // UPDATED: Frequencies to calculate for the Tilt Chart (54 MHz removed)
         const TILT_FREQUENCIES = [
@@ -497,6 +516,8 @@
         const outputLevel1215 = document.getElementById('outputLevel1215');
         const distanceInput = document.getElementById('distance');
         const cableTypeSelect = document.getElementById('cableType');
+		const tiltHighFreqRadios = document.querySelectorAll('input[name="tiltHighFreq"]');
+
         
         // Refactored passive elements
         const singlePassiveSelect = document.getElementById('singlePassiveSelect');
@@ -857,84 +878,74 @@
         /**
          * Initializes the Chart.js instance for the tilt calculator.
          */
-        function setupTiltChart() {
-            const ctx = document.getElementById('tiltChart').getContext('2d');
-            
-            // Check if chart already exists and destroy it
-            if (tiltChartInstance) {
-                tiltChartInstance.destroy();
-            }
+		function setupTiltChart() {
+			const ctx = document.getElementById('tiltChart').getContext('2d');
+			if (tiltChartInstance) tiltChartInstance.destroy();
 
-            const data = {
-                labels: TILT_FREQUENCIES.map(f => `${f} MHz`), // X-axis labels (Frequencies)
-                datasets: [{
-                    label: 'Output Response (dBmV)',
-                    data: [], // Y-axis data (Output Levels)
-                    borderColor: '#4ECDC4', // Teal color for the trace
-                    backgroundColor: 'rgba(78, 205, 196, 0.2)',
-                    borderWidth: 3,
-                    tension: 0.3, // Curve the line slightly
-                    pointRadius: 5,
-                    fill: false,
-                    pointBackgroundColor: '#fff',
-                    pointHoverBackgroundColor: '#4ECDC4'
-                }]
-            };
+			tiltChartInstance = new Chart(ctx, {
+				type: 'line',
+				data: {
+					labels: TILT_FREQUENCIES.map(f => `${f} MHz`),
+					datasets: [
+						{
+							label: 'Digital Output (dBmV)',
+							data: [],
+							borderColor: '#4ECDC4', // teal
+							backgroundColor: 'rgba(78,205,196,0.2)',
+							borderWidth: 3,
+							tension: 0.3,
+							pointRadius: 5,
+							fill: false,
+							pointBackgroundColor: '#fff',
+							pointHoverBackgroundColor: '#4ECDC4'
+						},
+						{
+							label: 'Analog Output (dBmV)',
+							data: [],
+							borderColor: '#facc15', // bright yellow
+							backgroundColor: 'rgba(250,204,21,0.15)',
+							borderWidth: 2,
+							tension: 0.3,
+							pointRadius: 4,
+							fill: false,
+							pointBackgroundColor: '#fff',
+							pointHoverBackgroundColor: '#facc15'
+						}
+					]
+				},
+				options: {
+					responsive: true,
+					maintainAspectRatio: false,
+					plugins: {
+						legend: {
+							display: true,
+							labels: { color: '#e5e7eb', font: { size: 12 } }
+						},
+						tooltip: {
+							callbacks: {
+								title: ctx => ctx[0].label,
+								label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} dBmV`
+							}
+						}
+					},
+					scales: {
+						x: {
+							title: { display: true, text: 'Frequency (MHz)', color: '#9ca3af' },
+							grid: { color: 'rgba(255,255,255,0.1)' },
+								ticks: { color: '#e5e7eb' }
+						},
+						y: {
+							title: { display: true, text: 'Output Level (dBmV)', color: '#9ca3af' },
+							grid: { color: 'rgba(255,255,255,0.1)' },
+							ticks: { color: '#e5e7eb' }
+						}
+					}
+				}
+		});
+		}
 
-            const config = {
-                type: 'line',
-                data: data,
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            callbacks: {
-                                title: function(context) {
-                                    return context[0].label;
-                                },
-                                label: function(context) {
-                                    return `Level: ${context.parsed.y.toFixed(2)} dBmV`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Frequency (MHz)',
-                                color: '#9ca3af'
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            },
-                            ticks: {
-                                color: '#e5e7eb'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Output Level (dBmV)',
-                                color: '#9ca3af'
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            },
-                            ticks: {
-                                color: '#e5e7eb'
-                            }
-                        }
-                    }
-                }
-            };
 
-            tiltChartInstance = new Chart(ctx, config);
-        }
+
 
         /**
          * Calculates the output level for a given frequency using linear interpolation.
@@ -943,31 +954,32 @@
          * @param {number} Lhigh - The output level at the high anchor frequency (1218 MHz).
          * @returns {number} The calculated output level in dBmV.
          */
-        function calculateLinearLevel(F, Llow, Lhigh) {
-            // Linear interpolation formula: 
-            // Y = Y1 + (Y2 - Y1) * (X - X1) / (X2 - X1)
-            // Here: Y=Level, X=Frequency, X1=111, Y1=Llow, X2=1218, Y2=Lhigh
-            
-            const F1 = TILT_ANCHOR_LOW;
-            const F2 = TILT_ANCHOR_HIGH;
-            
-            // Handle edge cases where F is outside or exactly on the anchors
-            if (F <= F1) return Llow;
-            if (F >= F2) return Lhigh;
+		function calculateLinearLevel(F, Llow, Lhigh) {
+			const F1 = TILT_ANCHOR_LOW;
+			const F2 = TILT_ANCHOR_HIGH;
 
-            const slope = (Lhigh - Llow) / (F2 - F1);
-            return Llow + slope * (F - F1);
-        }
+			// Compute slope between anchors
+			const slope = (Lhigh - Llow) / (F2 - F1);
+
+			if (F <= F1) return Llow;                 // below low anchor
+			if (F >= F2) return Lhigh + slope * (F - F2); // extrapolate beyond high anchor
+			return Llow + slope * (F - F1);          // interpolate in-between
+		}
+
 
         /**
          * Main function for the Tilt Calculator: reads inputs, calculates all levels, and updates UI.
          */
         function calculateAndRenderTilt() {
-            const Llow = parseFloat(tiltLevelLowInput.value) || 0;
-            const Lhigh = parseFloat(tiltLevelHighInput.value) || 0;
+			const Llow = parseFloat(tiltLevelLowInput.value) || 0;
+			const Lhigh = parseFloat(tiltLevelHighInput.value) || 0;
 
-            const results = [];
-            const chartDataPoints = [];
+			// Determine selected high anchor frequency
+			const selectedHighFreq = document.querySelector('input[name="tiltHighFreq"]:checked').value;
+			TILT_ANCHOR_HIGH = parseInt(selectedHighFreq);
+
+			const results = [];
+			const chartDataPoints = [];
 
             // Calculate the tilt reference level (which is the level at the low anchor, 111 MHz)
             // This is equivalent to Llow, but calculating it here ensures consistency.
@@ -999,11 +1011,15 @@
                 if (result.level < 4.00) levelClass = 'text-red-400';
                 else if (result.level < 5.00) levelClass = 'text-yellow-400';
 
-                tr.innerHTML = `
-                    <td class="px-4 py-2 whitespace-nowrap text-left text-gray-300">${result.frequency} MHz</td>
-                    <td class="px-4 py-2 whitespace-nowrap text-right font-bold ${levelClass}">${result.level.toFixed(2)}</td>
-                    <td class="px-4 py-2 whitespace-nowrap text-right font-medium text-gray-200">${result.tilt.toFixed(02)}</td>
-                `;
+                const analogOutput = result.level + 6;
+
+				tr.innerHTML = `
+					<td class="px-4 py-2 whitespace-nowrap text-left text-gray-300">${result.frequency} MHz</td>
+					<td class="px-4 py-2 whitespace-nowrap text-right font-bold ${levelClass}">${result.level.toFixed(2)}</td>
+					<td class="px-4 py-2 whitespace-nowrap text-right font-bold text-gray-300">${analogOutput.toFixed(2)}</td>
+					<td class="px-4 py-2 whitespace-nowrap text-right font-medium text-gray-200">${result.tilt.toFixed(2)}</td>
+				`;
+
                 tiltResultsTableBody.appendChild(tr);
             });
 
@@ -1013,7 +1029,10 @@
             }
             // Update labels and data
             tiltChartInstance.data.labels = TILT_FREQUENCIES.map(f => `${f} MHz`);
-            tiltChartInstance.data.datasets[0].data = chartDataPoints;
+            const analogDataPoints = results.map(r => r.level + 6);
+			tiltChartInstance.data.datasets[0].data = chartDataPoints;      // digital
+			tiltChartInstance.data.datasets[1].data = analogDataPoints;     // analog (+6)
+
             tiltChartInstance.update();
         }
         
@@ -1144,6 +1163,11 @@
         // Tilt Chart Event Listeners
         tiltLevelLowInput.addEventListener('input', calculateAndRenderTilt);
         tiltLevelHighInput.addEventListener('input', calculateAndRenderTilt);
+		tiltHighFreqRadios.forEach(radio => {
+		radio.addEventListener('change', () => {
+        calculateAndRenderTilt();
+			});
+		});
         
         
         // Optical Budget Event Listeners (NEW & Composite)
