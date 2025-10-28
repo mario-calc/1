@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -266,6 +267,40 @@
                 </div>
                 
             </div>
+
+			<!-- Amplifier Input EQ -->
+			<div class="input-group mt-4">
+			<label for="amplifierEqSelect" class="block text-sm font-medium text-gray-400 mb-1">
+				Amplifier Input EQ
+			</label>
+			<select id="amplifierEqSelect" class="select-field">
+				<option value="None">None</option>
+				<option value="CE-120-1">CE-120-1</option>
+				<option value="CE-120-2">CE-120-2</option>
+				<option value="CE-120-3">CE-120-3</option>
+				<option value="CE-120-4">CE-120-4</option>
+				<option value="CE-120-5">CE-120-5</option>
+				<option value="CE-120-6">CE-120-6</option>
+				<option value="CE-120-7">CE-120-7</option>
+				<option value="CE-120-8">CE-120-8</option>
+				<option value="CE-120-9">CE-120-9</option>
+				<option value="CE-120-10">CE-120-10</option>
+				<option value="CE-120-11">CE-120-11</option>
+				<option value="CE-120-12">CE-120-12</option>
+				<option value="CE-120-13">CE-120-13</option>
+				<option value="CE-120-14">CE-120-14</option>
+				<option value="CE-120-15">CE-120-15</option>
+				<option value="CE-120-16">CE-120-16</option>
+				<option value="CE-120-17">CE-120-17</option>
+				<option value="CE-120-18">CE-120-18</option>
+				<option value="CE-120-19">CE-120-19</option>
+				<option value="CE-120-20">CE-120-20</option>
+			</select>
+			<p class="text-xs text-gray-500 mt-1">
+				Add insertion loss of input EQ for amplifier.
+			</p>
+			</div>
+
 
             <div class="spectrum-display mt-8 space-y-4">
                 <div class="display-content space-y-4">
@@ -631,6 +666,40 @@
             "3W SPLIT (BALANCED)": { "111": 6.3, "999": 7.7, "1215": 8.7 },
             "PI": { "111": 0.5, "999": 1.0, "1215": 1.6 },
         };
+		
+		// --- Amplifier Input EQ Loss Data (from BBI datasheet, 105→111 MHz, 1002→999 MHz, 1218→1215 MHz)
+			const EQ_LOSS_DATA = {
+			"CE-120-1":  {111:1.0, 999:0.9, 1215:0.7},
+			"CE-120-2":  {111:2.0, 999:1.0, 1215:0.7},
+			"CE-120-3":  {111:3.0, 999:1.1, 1215:0.7},
+			"CE-120-4":  {111:4.0, 999:1.2, 1215:0.7},
+			"CE-120-5":  {111:5.0, 999:1.4, 1215:0.7},
+			"CE-120-6":  {111:6.0, 999:1.5, 1215:0.7},
+			"CE-120-7":  {111:7.0, 999:1.6, 1215:0.7},
+			"CE-120-8":  {111:8.0, 999:1.7, 1215:0.7},
+			"CE-120-9":  {111:9.0, 999:1.9, 1215:0.7},
+			"CE-120-10": {111:10.0, 999:2.0, 1215:0.7},
+			"CE-120-11": {111:11.0, 999:2.1, 1215:0.7},
+			"CE-120-12": {111:12.0, 999:2.3, 1215:0.7},
+			"CE-120-13": {111:13.0, 999:2.4, 1215:0.7},
+			"CE-120-14": {111:14.0, 999:2.5, 1215:0.7},
+			"CE-120-15": {111:15.0, 999:2.7, 1215:0.7},
+			"CE-120-16": {111:16.0, 999:2.8, 1215:0.7},
+			"CE-120-17": {111:17.0, 999:2.9, 1215:0.7},
+			"CE-120-18": {111:18.0, 999:3.0, 1215:0.7},
+			"CE-120-19": {111:19.0, 999:3.2, 1215:0.7},
+			"CE-120-20": {111:20.0, 999:3.3, 1215:0.7}
+			};
+
+			let selectedAmplifierEQ = "None";
+			const amplifierEqSelect = document.getElementById("amplifierEqSelect");
+
+			amplifierEqSelect.addEventListener("change", () => {
+			selectedAmplifierEQ = amplifierEqSelect.value;
+			renderAddedPassives();
+			calculateSpanLoss();
+			});
+
         
         // --- Optical Loss Constants (dB) ---
         const LOSS_FIBER_1310 = 0.35; // dB/km (Standard SMF loss)
@@ -666,12 +735,20 @@
         /**
          * Clears all devices from the global array.
          */
-        function clearPassiveSelection(event) {
-            if (event) event.preventDefault(); 
-            addedPassiveDevices = [];
-            renderAddedPassives(); // Update UI to show empty state
-            calculateSpanLoss(); // Recalculate everything after clearing
-        }
+			function clearPassiveSelection() {
+				// Clear all added passive devices
+				addedPassiveDevices = [];
+
+				// Reset Amplifier Input EQ selection
+				selectedAmplifierEQ = "None";
+				document.getElementById("amplifierEqSelect").value = "None";
+
+				// Refresh displays
+				renderAddedPassives();
+				displayPassiveLossDetails();
+				calculateSpanLoss();
+			}			
+
 
         /**
          * Renders the list of added devices in the UI with remove buttons.
@@ -757,53 +834,68 @@
 
         // --- Span Loss Calculation and Display Functions ---
 
-        /**
-         * Generates and injects the HTML rows detailing the grouped loss for each passive device type.
-         */
-        function displayPassiveLossDetails() {
-            const passiveDetailsContainer = document.getElementById('passive-loss-details'); 
-            // Clear previous details
-            passiveDetailsContainer.innerHTML = '';
-            
-            if (addedPassiveDevices.length === 0) {
-                 passiveDetailsContainer.innerHTML = `
-                    <div class="grid grid-cols-4 gap-2 items-center text-sm">
-                        <div class="text-gray-500 font-light italic pl-2 col-span-4 text-center">No passive loss applied.</div>
-                    </div>
-                `;
-                return;
-            }
+function displayPassiveLossDetails() {
+    const passiveDetailsContainer = document.getElementById('passive-loss-details'); 
+    passiveDetailsContainer.innerHTML = '';
 
-            // Group devices by type and count occurrences
-            const deviceCounts = addedPassiveDevices.reduce((acc, device) => {
-                acc[device] = (acc[device] || 0) + 1;
-                return acc;
-            }, {});
+    // Check if there are no devices and no EQ
+    if (addedPassiveDevices.length === 0 && (!selectedAmplifierEQ || selectedAmplifierEQ === "None")) {
+        passiveDetailsContainer.innerHTML = `
+            <div class="grid grid-cols-4 gap-2 items-center text-sm">
+                <div class="text-gray-500 font-light italic pl-2 col-span-4 text-center">
+                    No passive loss applied.
+                </div>
+            </div>
+        `;
+        return;
+    }
 
-            let htmlContent = '';
-            
-            for (const passiveType in deviceCounts) {
-                const count = deviceCounts[passiveType];
-                const data = PASSIVE_LOSS_DATA[passiveType];
-                
-                if (data) {
-                    const totalLoss111 = data["111"] * count;
-                    const totalLoss999 = data["999"] * count;
-                    const totalLoss1215 = data["1215"] * count;
+    // Group devices by type and count
+    const deviceCounts = addedPassiveDevices.reduce((acc, device) => {
+        acc[device] = (acc[device] || 0) + 1;
+        return acc;
+    }, {});
 
-                    htmlContent += `
-                        <div class="grid grid-cols-4 gap-2 items-center text-sm">
-                            <div class="text-gray-500 font-light pl-2">(${count}x) ${passiveType}</div>
-                            <div class="output-value-loss text-center">${totalLoss111.toFixed(2)}</div>
-                            <div class="output-value-loss text-center">${totalLoss999.toFixed(2)}</div>
-                            <div class="output-value-loss text-center">${totalLoss1215.toFixed(2)}</div>
-                        </div>
-                    `;
-                }
-            }
+    // Add the selected EQ as a single “device”
+    if (selectedAmplifierEQ && selectedAmplifierEQ !== "None") {
+        deviceCounts[selectedAmplifierEQ] = 1;
+    }
 
-            passiveDetailsContainer.innerHTML = htmlContent;
+    let htmlContent = '';
+
+    for (const deviceType in deviceCounts) {
+        const count = deviceCounts[deviceType];
+        let data = PASSIVE_LOSS_DATA[deviceType];
+
+        // ✅ Use EQ loss data if this device is an Amplifier EQ
+        if (!data && EQ_LOSS_DATA[deviceType]) {
+            data = EQ_LOSS_DATA[deviceType];
         }
+
+        if (data) {
+            const totalLoss111 = data["111"] * count;
+            const totalLoss999 = data["999"] * count;
+            const totalLoss1215 = data["1215"] * count;
+
+            // Label EQ more clearly
+            const displayName = EQ_LOSS_DATA[deviceType]
+                ? `Amplifier EQ: ${deviceType}`
+                : `(${count}x) ${deviceType}`;
+
+            htmlContent += `
+                <div class="grid grid-cols-4 gap-2 items-center text-sm">
+                    <div class="text-gray-500 font-light pl-2">${displayName}</div>
+                    <div class="output-value-loss text-center">${totalLoss111.toFixed(2)}</div>
+                    <div class="output-value-loss text-center">${totalLoss999.toFixed(2)}</div>
+                    <div class="output-value-loss text-center">${totalLoss1215.toFixed(2)}</div>
+                </div>
+            `;
+        }
+    }
+
+    passiveDetailsContainer.innerHTML = htmlContent;
+}
+
 
         /**
          * Calculates and updates the display for a single, specified frequency.
@@ -843,6 +935,15 @@
                     console.warn(`Passive loss data for ${passiveType} at ${frequency} MHz is missing from the data table (treated as 0 dB).`);
                 }
             });
+			
+			// Add amplifier EQ loss if selected
+			if (selectedAmplifierEQ && selectedAmplifierEQ !== "None") {
+			const eqLoss = EQ_LOSS_DATA[selectedAmplifierEQ]?.[frequency];
+			if (eqLoss !== undefined) {
+				totalPassiveLoss += eqLoss;
+				}
+			}
+
 
             // 4. Update Total Passive Loss Display (Apply color and text format)
             applyLossColor(config.totalPassiveLossDisplay, totalPassiveLoss);
