@@ -125,6 +125,14 @@
 
         /* ✅ FIX: Utility hidden class */
         .hidden { display: none; }
+		
+		.eq-row {
+		color: #5eead4; /* Tailwind teal-300 */
+		
+		font-weight: 600;
+		}
+
+		
     </style>
 </head>
 <body>
@@ -834,21 +842,21 @@
 
         // --- Span Loss Calculation and Display Functions ---
 
-function displayPassiveLossDetails() {
-    const passiveDetailsContainer = document.getElementById('passive-loss-details'); 
-    passiveDetailsContainer.innerHTML = '';
+			function displayPassiveLossDetails() {
+				const passiveDetailsContainer = document.getElementById('passive-loss-details'); 
+				passiveDetailsContainer.innerHTML = '';
 
-    // Check if there are no devices and no EQ
-    if (addedPassiveDevices.length === 0 && (!selectedAmplifierEQ || selectedAmplifierEQ === "None")) {
-        passiveDetailsContainer.innerHTML = `
-            <div class="grid grid-cols-4 gap-2 items-center text-sm">
-                <div class="text-gray-500 font-light italic pl-2 col-span-4 text-center">
-                    No passive loss applied.
-                </div>
-            </div>
-        `;
-        return;
-    }
+				// Check if there are no devices and no EQ
+				if (addedPassiveDevices.length === 0 && (!selectedAmplifierEQ || selectedAmplifierEQ === "None")) {
+					passiveDetailsContainer.innerHTML = `
+						<div class="grid grid-cols-4 gap-2 items-center text-sm">
+							<div class="text-gray-500 font-light italic pl-2 col-span-4 text-center">
+								No passive loss applied.
+							</div>
+						</div>
+					`;
+					return;
+				}
 
     // Group devices by type and count
     const deviceCounts = addedPassiveDevices.reduce((acc, device) => {
@@ -882,8 +890,8 @@ function displayPassiveLossDetails() {
                 ? `Amplifier EQ: ${deviceType}`
                 : `(${count}x) ${deviceType}`;
 
-            htmlContent += `
-                <div class="grid grid-cols-4 gap-2 items-center text-sm">
+			htmlContent += `
+				<div class="grid grid-cols-4 gap-2 items-center text-sm ${EQ_LOSS_DATA[deviceType] ? 'bg-[#161E2A] text-teal-300 font-semibold rounded-md px-1' : ''}">
                     <div class="text-gray-500 font-light pl-2">${displayName}</div>
                     <div class="output-value-loss text-center">${totalLoss111.toFixed(2)}</div>
                     <div class="output-value-loss text-center">${totalLoss999.toFixed(2)}</div>
