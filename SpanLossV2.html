@@ -1,0 +1,1677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mario's RF & Optical Calculations</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script> 
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* Custom CSS for a better aesthetic and interaction */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* Dark background */
+            /* Use flex column to stack nav and content */
+            display: flex;
+            flex-direction: column; 
+            min-height: 100vh;
+        }
+        
+        /* Wrapper to center the content section below the fixed nav */
+        .content-wrapper {
+            flex-grow: 1; /* Takes up remaining vertical space */
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to the top of the remaining space */
+            padding: 20px;
+        }
+
+        .calculator {
+            max-width: 850px; 
+            width: 100%;
+            /* Rugged, dark panel aesthetic */
+            box-shadow: 0 0 40px rgba(78, 205, 196, 0.1), 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            border: 1px solid #30363d;
+            background-color: #1a2027; /* Slightly lighter than nav for contrast */
+            border-radius: 1.5rem;
+        }
+
+        /* --- SPECTRUM ANALYZER DISPLAY STYLES --- */
+        .spectrum-display {
+            position: relative;
+            background-color: #000000; /* Pure black screen */
+            border: 4px solid #30363d; /* Thick border for a device feel */
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.8); /* Inner shadow for depth */
+        }
+        
+        /* Graticule (Grid) effect using a pseudo-element */
+        .spectrum-display::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 0;
+            /* Create a subtle grid pattern (graticule) using repeating linear gradients */
+            background-image: 
+                repeating-linear-gradient(to right, #1f3a3a 1px, transparent 1px, transparent 19%), /* Vertical lines (Frequency/Span) */
+                repeating-linear-gradient(to bottom, #1f3a3a 1px, transparent 1px, transparent 24%); /* Horizontal lines (Amplitude/dB) */
+            background-size: 20% 25%; /* Creates a 5x4 grid */
+            opacity: 0.5; /* Subtle grid color */
+        }
+
+        /* Ensure content is layered above the graticule */
+        .display-content > div {
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Input/Select Styling for a consistent, dark control panel look */
+        .input-group label {
+            text-align: left;
+        }
+        
+        .input-field, .select-field {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #4a5568; /* Slightly lighter border on focus */
+            background-color: #0f131a;
+            color: #ffffff;
+            border-radius: 0.5rem;
+            font-size: 1.1rem;
+            transition: border-color 0.2s;
+        }
+
+        .input-field:focus, .select-field:focus {
+            border-color: #4ECDC4; /* Teal focus glow */
+            outline: none;
+        }
+
+        /* Output colors mimic neon traces */
+        .output-value-critical { color: #f87171; } /* Red for bad input levels */
+        .output-value-marginal { color: #facc15; } /* Yellow for marginal input levels */
+        .output-value-good { color: #84cc16; } /* Bright Green for good input levels */
+        
+        /* Loss calculations are bright yellow */
+        .output-value-loss { color: #facc15; } 
+
+        .output-value-default { color: #e5e7eb; } /* Light gray for headers/zero values */
+        
+        /* Specific optical colors (Brighter Blue for 1310nm, Yellow for 1550nm) */
+        .output-1310 { color: #3b82f6; } 
+        .output-1550 { color: #facc15; }
+
+        /* Ensure inputs in the grid are concise */
+        .output-level-input {
+            padding: 0.5rem;
+            font-size: 1rem;
+        }
+        
+        /* NEW: Tilt Chart Specific Styles */
+        #tiltChartView {
+            display: none; /* Initially hide the tilt view */
+        }
+        
+        /* NEW: Optical Budget Specific Styles */
+        #opticalBudgetView {
+            display: none; /* Initially hide the optical view */
+        }
+        
+        /* NEW: Max Spans Specific Styles */
+        #maxSpansView {
+            display: none; /* Initially hide the max spans view */
+        }
+
+        /* ✅ FIX: Utility hidden class */
+        .hidden { display: none; }
+		
+		.eq-row {
+		color: #5eead4; /* Tailwind teal-300 */
+		
+		font-weight: 600;
+		}
+
+        /* NEW: Stylish Radio Button Segmented Control */
+        #attFactorTypical:checked + #labelAttFactorTypical, 
+        #attFactorMax:checked + #labelAttFactorMax {
+            background-color: #4ECDC4; /* Teal color for checked state */
+            color: #1a2027; /* Dark text for contrast */
+            box-shadow: 0 0 10px rgba(78, 205, 196, 0.4); /* Subtle glow */
+        }
+
+        /* Ensure hover effect is consistent for active state */
+        #attFactorTypical:checked + #labelAttFactorTypical:hover, 
+        #attFactorMax:checked + #labelAttFactorMax:hover {
+            background-color: #34a8a0; /* Darker teal on hover */
+        }
+        
+        /* Read-only fields in the Max Spans view should look different */
+        .input-field-readonly {
+            background-color: #2d3748; /* Darker gray for read-only */
+            color: #a0aec0; /* Lighter text color */
+            border-color: #4a5568;
+        }
+
+    </style>
+</head>
+<body>
+
+    <nav class="bg-[#161b22] shadow-xl sticky top-0 z-10 border-b border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-start h-16">
+                
+                <div class="flex-shrink-0 flex items-center">
+                    <svg class="w-8 h-8 mr-2" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="4" y="6" width="24" height="20" rx="3" fill="#30363d" stroke="#4a5568" stroke-width="2"/>
+                        <rect x="7" y="9" width="18" height="12" rx="2" fill="#000000" stroke="#4ECDC4" stroke-width="1.5"/>
+                        <path d="M 8 18 L 13 14 L 17 17 L 21 12 L 24 18"
+                              fill="none"
+                              stroke="#84cc16" 
+                              stroke-width="1.5"
+                              stroke-linejoin="round"
+                              stroke-linecap="round"/>
+                        <circle cx="27" cy="10" r="1.5" fill="#a0aec0"/>
+                        <circle cx="27" cy="22" r="1.5" fill="#a0aec0"/>
+                    </svg>
+                    <span class="text-xl font-bold text-gray-300">
+                        <span class="text-[#4ECDC4]">Mario</span> <span class="text-white">Calc</span>
+                    </span>
+                </div>
+                <div class="ml-10 flex items-baseline space-x-4">
+                    <button id="spanLossBtn" class="px-3 py-2 rounded-lg text-sm font-medium text-gray-900 bg-[#4ECDC4] hover:bg-[#34a8a0] transition duration-150 shadow-md">
+                        RF Span Loss
+                    </button>
+                    <button id="tiltChartBtn" class="px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-[#30363d] transition duration-150">
+                        Tilt Chart
+                    </button>
+                    <button id="maxSpansBtn" class="px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-[#30363d] transition duration-150">
+                        Max Spans
+                    </button>
+                    <button id="opticalBudgetBtn" class="px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-[#30363d] transition duration-150">
+                        Optical Budget
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="content-wrapper">
+        
+        <div id="spanLossView" class="calculator p-6"> 
+            <h2 class="text-2xl font-bold text-white mb-6 text-center">RF Span Loss Calculator</h2>
+
+            <div class="space-y-4" id="input-form">
+                
+                <div class="input-group">
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Target Output Levels (dBmV)</label>
+                    <div class="grid grid-cols-4 gap-2">
+                        <div>
+                            <label for="outputLevel111" class="block text-xs text-gray-500 mb-1 text-center">111 MHz</label>
+                            <input type="number" id="outputLevel111" value="33" class="input-field output-level-input text-center" step="1">
+                        </div>
+                        <div>
+                            <label for="outputLevel753" class="block text-xs text-gray-500 mb-1 text-center">753 MHz</label>
+                            <input type="number" id="outputLevel753" value="41" class="input-field output-level-input text-center" step="1">
+                        </div>
+                        <div>
+                            <label for="outputLevel999" class="block text-xs text-gray-500 mb-1 text-center">999 MHz</label>
+                            <input type="number" id="outputLevel999" value="44" class="input-field output-level-input text-center" step="1">
+                        </div>
+                        <div>
+                            <label for="outputLevel1215" class="block text-xs text-gray-500 mb-1 text-center">1215 MHz</label>
+                            <input type="number" id="outputLevel1215" value="47" class="input-field output-level-input text-center" step="1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="distance" class="block text-sm font-medium text-gray-400 mb-1">Cable Run Distance (feet)</label>
+                    <input type="number" id="distance" placeholder="e.g. 2357" class="input-field" min="0" step="1">
+                </div>
+
+                <div class="input-group">
+                    <label for="cableType" class="block text-sm font-medium text-gray-400 mb-1">Cable Type</label>
+                    <select id="cableType" class="select-field">
+                        <option value="MC2-500">MC2-500</option>
+						<option value="MC2-650">MC2-650</option>
+						<option value="MC2-750">MC2-750</option>
+						<option value="MC2-1000">MC2-1000</option>
+						<option value="P3-500">P3-500</option>
+						<option value="P3-625">P3-625</option>
+						<option value="P3-750">P3-750</option>
+						<option value="P3-875"selected>P3-875</option>
+						<option value="QR-540">QR-540</option>
+						<option value="QR-715">QR-715</option>
+						<option value="QR-860">QR-860</option>
+						<option value="QR-1125">QR-1125</option>
+						<option value="T10-500">T10-500</option>
+						<option value="T10-625">T10-625</option>
+						<option value="T10-750">T10-750</option>
+						<option value="T10-875">T10-875</option>
+						<option value="TX10-565">TX10-565</option>
+						<option value="TX10-700">TX10-700</option>
+						<option value="TX10-840">TX10-840</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Attenuation Factor</label>
+                    <div class="flex rounded-lg overflow-hidden border border-gray-700 w-full md:w-1/2">
+                        
+                        <input type="radio" id="attFactorTypical" name="attenuationFactor" value="Typical" class="hidden" checked>
+                        <label for="attFactorTypical" id="labelAttFactorTypical" class="flex-1 text-center py-2 px-4 cursor-pointer text-gray-300 transition duration-200 ease-in-out bg-gray-800 hover:bg-gray-700 font-semibold">
+                            Typical
+                        </label>
+                        
+                        <input type="radio" id="attFactorMax" name="attenuationFactor" value="Max" class="hidden">
+                        <label for="attFactorMax" id="labelAttFactorMax" class="flex-1 text-center py-2 px-4 cursor-pointer text-gray-300 transition duration-200 ease-in-out bg-gray-800 hover:bg-gray-700 font-semibold">
+                            Max
+                        </label>
+                        
+                    </div>
+                </div>
+
+
+                <div class="input-group">
+                    <label for="singlePassiveSelect" class="block text-sm font-medium text-gray-400 mb-1">Select and Add Passive Devices</label>
+                    <div class="flex space-x-2 mb-3">
+                        <select id="singlePassiveSelect" class="select-field flex-grow">
+                            <option value="DC8 (THROUGH)">DC8 (THROUGH)</option> 
+                            <option value="DC8 (TAP)">DC8 (TAP)</option>
+                            <option value="DC12 (THROUGH)">DC12 (THROUGH)</option>
+                            <option value="DC12 (TAP)">DC12 (TAP)</option>
+                            <option value="2W SPLIT">2W SPLIT</option>
+                            <option value="3W SPLIT (LOW LOSS)">3W SPLIT (LOW LOSS)</option>
+                            <option value="3W SPLIT (HIGH LOSS)">3W SPLIT (HIGH LOSS)</option>
+                            <option value="3W SPLIT (BALANCED)">3W SPLIT (BALANCED)</option>
+                            <option value="PI">PI</option>
+                            <option value="2P 4V">2P 4V</option> 
+                            <option value="2P 8V">2P 8V</option>
+                            <option value="2P 11V">2P 11V</option>
+                            <option value="2P 14V">2P 14V</option>
+                            <option value="2P 17V">2P 17V</option>
+                            <option value="2P 20V">2P 20V</option>
+                            <option value="2P 23V">2P 23V</option>
+                            <option value="2P 26V">2P 26V</option>
+                            <option value="2P 29V">2P 29V</option>
+                            <option value="4P 8V">4P 8V</option>
+                            <option value="4P 11V">4P 11V</option>
+                            <option value="4P 14V">4P 14V</option>
+                            <option value="4P 17V">4P 17V</option>
+                            <option value="4P 20V">4P 20V</option>
+                            <option value="4P 23V">4P 23V</option>
+                            <option value="4P 26V">4P 26V</option>
+                            <option value="4P 29V">4P 29V</option>
+                            <option value="8P 12V">8P 12V</option>
+                            <option value="8P 15V">8P 15V</option>
+                            <option value="8P 18V">8P 18V</option>
+                            <option value="8P 24V">8P 24V</option>
+                        </select>
+                        <button id="addPassiveBtn" class="px-5 py-2 bg-[#4ECDC4] hover:bg-[#34a8a0] active:bg-[#287d76] text-gray-900 font-semibold rounded-lg transition duration-150 ease-in-out whitespace-nowrap shadow-lg">
+                            Add Device
+                        </button>
+                    </div>
+                    
+                    <div class="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                        <label class="block text-sm font-medium text-gray-400 mb-2">Current Span Devices:</label>
+                        <div id="added-passives-list" class="space-y-1 text-sm text-gray-300 min-h-[2rem]">
+                            <p class="text-gray-500 italic text-center text-xs" id="empty-passives-message">No devices added yet.</p>
+                        </div>
+                    </div>
+
+                    <button id="clearPassivesBtn" class="mt-3 w-full px-4 py-2 bg-red-700 hover:bg-red-800 active:bg-red-900 text-white font-semibold rounded-lg transition duration-150 ease-in-out shadow-md">
+                        Clear All Devices
+                    </button>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Add multiple instances of a device (e.g., two splitters). Click the 'x' to remove.
+                    </p>
+                </div>
+                
+            </div>
+
+			<div class="input-group mt-4">
+			<label for="amplifierEqSelect" class="block text-sm font-medium text-gray-400 mb-1">
+				Amplifier Input EQ
+			</label>
+			<select id="amplifierEqSelect" class="select-field">
+				<option value="None">None</option>
+				<option value="CE-120-1">CE-120-1</option>
+				<option value="CE-120-2">CE-120-2</option>
+				<option value="CE-120-3">CE-120-3</option>
+				<option value="CE-120-4">CE-120-4</option>
+				<option value="CE-120-5">CE-120-5</option>
+				<option value="CE-120-6">CE-120-6</option>
+				<option value="CE-120-7">CE-120-7</option>
+				<option value="CE-120-8">CE-120-8</option>
+				<option value="CE-120-9">CE-120-9</option>
+				<option value="CE-120-10">CE-120-10</option>
+				<option value="CE-120-11">CE-120-11</option>
+				<option value="CE-120-12">CE-120-12</option>
+				<option value="CE-120-13">CE-120-13</option>
+				<option value="CE-120-14">CE-120-14</option>
+				<option value="CE-120-15">CE-120-15</option>
+				<option value="CE-120-16">CE-120-16</option>
+				<option value="CE-120-17">CE-120-17</option>
+				<option value="CE-120-18">CE-120-18</option>
+				<option value="CE-120-19">CE-120-19</option>
+				<option value="CE-120-20">CE-120-20</option>
+			</select>
+			<p class="text-xs text-gray-500 mt-1">
+				Add insertion loss of input EQ for amplifier.
+			</p>
+			</div>
+
+
+            <div class="spectrum-display mt-8 space-y-4">
+                <div class="display-content space-y-4">
+                    
+                    <div class="grid grid-cols-5 gap-2 text-gray-400 font-semibold text-sm border-b border-gray-700 pb-2">
+                        <div></div>
+                        <div class="text-center">111 MHz</div>
+                        <div class="text-center">753 MHz</div>
+                        <div class="text-center">999 MHz</div>
+                        <div class="text-center">1215 MHz</div>
+                    </div>
+
+                    <div class="grid grid-cols-5 gap-2 items-center">
+                        <div class="text-md text-gray-400 font-medium">Cable Loss (dB):</div>
+                        <div id="cable-loss-111" class="text-md font-extrabold output-value-loss text-center">0.00</div>
+                        <div id="cable-loss-753" class="text-md font-extrabold output-value-loss text-center">0.00</div>
+                        <div id="cable-loss-999" class="text-md font-extrabold output-value-loss text-center">0.00</div>
+                        <div id="cable-loss-1215" class="text-md font-extrabold output-value-loss text-center">0.00</div>
+                    </div>
+                    
+                    <div class="pt-2 text-md text-gray-300 font-bold border-t border-gray-700 text-center">Insertion Loss Breakdown:</div>
+                    <div id="passive-loss-details" class="space-y-1">
+                        </div>
+
+                    <div class="grid grid-cols-5 gap-2 items-center pt-3 border-t border-gray-700">
+                        <div class="text-xl text-gray-400 font-medium">Total Insertion Loss (dB):</div>
+                        <div id="total-passive-loss-111" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-passive-loss-753" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-passive-loss-999" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-passive-loss-1215" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                    </div>
+
+
+                    <div class="grid grid-cols-5 gap-2 items-center pt-3 border-t border-gray-700">
+                        <div class="text-xl text-gray-400 font-medium">Total Span Loss (dB):</div>
+                        <div id="total-loss-111" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-loss-753" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-loss-999" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                        <div id="total-loss-1215" class="text-xl font-extrabold output-value-default text-center">0.00</div>
+                    </div>
+
+                    <div class="grid grid-cols-5 gap-2 items-center pt-3 border-t border-gray-700">
+                        <div class="text-xl text-gray-400 font-medium">Input (dBmV):</div>
+                        <div id="input-level-111" class="text-3xl font-extrabold output-value-good text-center">0.00</div>
+                        <div id="input-level-753" class="text-3xl font-extrabold output-value-good text-center">0.00</div>
+                        <div id="input-level-999" class="text-3xl font-extrabold output-value-good text-center">0.00</div>
+                        <div id="input-level-1215" class="text-3xl font-extrabold output-value-good text-center">0.00</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tiltChartView" class="calculator p-6">
+            <h2 class="text-2xl font-bold text-white mb-6 text-center">Amplifier Tilt & Response</h2>
+
+            <div class="space-y-4 mb-8">
+                <p class="text-gray-400 text-sm italic">Define the linear response curve using two anchor points. All intermediate frequencies will be interpolated.</p>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-[#1a2027] p-4 rounded-lg border border-gray-700">
+                        <label class="block text-md font-medium text-gray-300 mb-2">Low Anchor Point (111 MHz)</label>
+                        <div class="flex items-center space-x-2">
+                             <span class="text-gray-500 font-bold w-1/3">Level (dBmV)</span>
+                            <input type="number" id="tiltLevelLow" value="33.0" class="input-field output-level-input text-center flex-grow" step="1">
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1a2027] p-4 rounded-lg border border-gray-700">
+						<label class="block text-md font-medium text-gray-300 mb-2">High Anchor Point</label>
+
+
+						
+						<div class="flex items-center space-x-2">
+							<span class="text-gray-500 font-bold w-1/3">Level (dBmV)</span>
+							<input type="number" id="tiltLevelHigh" value="48.0" class="input-field output-level-input text-center flex-grow" step="1">
+						</div>
+						
+					<div class="flex items-center justify-between mb-3">
+								<div class="flex items-center space-x-3">
+								<label class="flex items-center space-x-1 text-gray-400 cursor-pointer">
+									<input type="radio" name="tiltHighFreq" value="999" class="text-[#4ECDC4]" />
+								<span>999 MHz</span>
+								</label>
+								<label class="flex items-center space-x-1 text-gray-400 cursor-pointer">
+									<input type="radio" name="tiltHighFreq" value="1218" class="text-[#4ECDC4]" checked />
+									<span>1218 MHz</span>
+								</label>
+							</div>
+						</div>
+
+                    </div>
+                </div>
+            </div>
+            
+            <div class="spectrum-display mb-8">
+                <div class="display-content">
+                    <h3 class="text-xl font-bold text-[#4ECDC4] mb-4 text-center">Frequency Response Plot</h3>
+                    <div class="h-64 sm:h-80 w-full">
+                        <canvas id="tiltChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <h3 class="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">Calculated Output Levels</h3>
+            <div class="overflow-x-auto rounded-lg border border-gray-700">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-[#161b22]">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Frequency (MHz)</th>
+							<th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Output Level (dBmV)</th>
+							<th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Analog Output (dBmV)</th> 
+							<th class="px-4 py-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Tilt vs 111 MHz (dB)</th>
+
+                        </tr>
+                    </thead>
+                    <tbody id="tiltResultsTableBody" class="bg-gray-800 divide-y divide-gray-700 text-sm">
+                        </tbody>
+                </table>
+            </div>
+
+        </div>
+
+        <div id="opticalBudgetView" class="calculator p-6">
+            <h2 class="text-2xl font-bold text-white mb-6 text-center">Optical Loss Budget (dB)</h2>
+            <p class="text-gray-400 text-sm italic mb-6">Calculates end-to-end loss based on industry standard attenuation for single-mode fiber.</p>
+
+            <div class="space-y-4 mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    <div class="input-group">
+                        <label for="opticalDistanceKm" class="block text-sm font-medium text-gray-400 mb-1">Fiber Distance (km)</label>
+                        <input type="number" id="opticalDistanceKm" placeholder="e.g. 15.5" class="input-field text-center" min="0" step="1">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="opticalConnectors" class="block text-sm font-medium text-gray-400 mb-1">Number of Connections (0.75 dB/conn)</label>
+                        <input type="number" id="opticalConnectors" value="0" placeholder="e.g. 2 or 0" class="input-field text-center" min="0" step="1">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="opticalSplices" class="block text-sm font-medium text-gray-400 mb-1">Number of Splices (0.1 dB/splice)</label>
+                        <input type="number" id="opticalSplices" value="0" placeholder="e.g. 4 or 0" class="input-field text-center" min="0" step="1">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="opticalMuxed" class="block text-sm font-medium text-gray-400 mb-1">Include MUX/DEMUX Loss (3.0 dB)</label>
+                        <div class="input-field flex items-center justify-between">
+                            <span class="text-gray-300 select-none text-base">Apply 3.0 dB MUX/DEMUX factor</span>
+                            <input type="checkbox" id="opticalMuxed" class="h-6 w-6 text-[#4ECDC4] rounded border-gray-600 focus:ring-[#4ECDC4] bg-gray-800 cursor-pointer">
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto rounded-lg border border-gray-700 mb-8">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-[#161b22]">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Loss Component</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium output-1310 uppercase tracking-wider">1310 nm (dB)</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium output-1550 uppercase tracking-wider">1550 nm (dB)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-gray-800 divide-y divide-gray-700 text-sm font-mono">
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-4 py-3 whitespace-nowrap text-left font-medium text-gray-300">Fiber Attenuation</td>
+                            <td id="fiberLoss1310" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1310">0.00</td>
+                            <td id="fiberLoss1550" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1550">0.00</td>
+                        </tr>
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-4 py-3 whitespace-nowrap text-left font-medium text-gray-300">Connector Loss</td>
+                            <td id="connLoss1310" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1310">0.00</td>
+                            <td id="connLoss1550" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1550">0.00</td>
+                        </tr>
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-4 py-3 whitespace-nowrap text-left font-medium text-gray-300">Splice Loss</td>
+                            <td id="spliceLoss1310" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1310">0.00</td>
+                            <td id="spliceLoss1550" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1550">0.00</td>
+                        </tr>
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-4 py-3 whitespace-nowrap text-left font-medium text-gray-300">MUX/DEMUX Loss</td>
+                            <td id="muxLoss1310" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1310">0.00</td>
+                            <td id="muxLoss1550" class="px-4 py-3 whitespace-nowrap text-center font-bold output-1550">0.00</td>
+                        </tr>
+                        <tr class="bg-[#1a2027] border-t-2 border-[#4ECDC4]">
+                            <td class="px-4 py-4 whitespace-nowrap text-left text-xl font-extrabold text-[#4ECDC4]">TOTAL OPTICAL BUDGET (dB)</td>
+                            <td id="totalBudget1310" class="px-4 py-4 whitespace-nowrap text-center text-3xl font-extrabold output-1310">0.00</td>
+                            <td id="totalBudget1550" class="px-4 py-4 whitespace-nowrap text-center text-3xl font-extrabold output-1550">0.00</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <h3 class="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">Composite Optical Power</h3>
+            <p class="text-gray-400 text-sm italic mb-4">Calculates the total optical power of all combined transmitters.</p>
+
+            <div class="space-y-4 mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    <div class="input-group">
+                        <label for="numTransmitters" class="block text-sm font-medium text-gray-400 mb-1">Number of Transmitters</label>
+                        <input type="number" id="numTransmitters" value="1" placeholder="e.g. 1" class="input-field text-center" min="1" step="1">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="singleTxPower" class="block text-sm font-medium text-gray-400 mb-1">Per-Transmitter Power (dBm)</label>
+                        <input type="number" id="singleTxPower" value="10.0" placeholder="e.g. 10.0" class="input-field text-center" step="1">
+                    </div>
+                </div>
+            </div>
+
+            <div class="spectrum-display">
+                <div class="display-content text-center py-2">
+                    <div class="text-xl text-gray-400 font-medium mb-1">Total Composite Optical Power (dBm):</div>
+                    <div id="compositeOpticalPower" class="text-4xl font-extrabold text-[#f87171] md:text-5xl">0.00</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="maxSpansView" class="calculator p-6">
+            <h2 class="text-2xl font-bold text-white mb-6 text-center">Max Spans Calculator</h2>
+            
+            <div class="input-group mb-6">
+                <label class="block text-sm font-medium text-gray-400 mb-2 border-b border-gray-700 pb-2">Target Output Levels (dBmV)</label>
+                <div class="grid grid-cols-4 gap-2">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1 text-center">111 MHz</label>
+                        <input type="text" id="maxSpansOutput111" value="33" class="input-field input-field-readonly output-level-input text-center" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1 text-center">753 MHz</label>
+                        <input type="text" id="maxSpansOutput753" value="43" class="input-field input-field-readonly output-level-input text-center" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1 text-center">999 MHz</label>
+                        <input type="text" id="maxSpansOutput999" value="47" class="input-field input-field-readonly output-level-input text-center" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1 text-center">1215 MHz</label>
+                        <input type="text" id="maxSpansOutput1215" value="51" class="input-field input-field-readonly output-level-input text-center" readonly>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="space-y-4 mb-8" id="max-spans-input-form">
+                <div class="input-group">
+                    <label for="targetInputLevel" class="block text-sm font-medium text-gray-400 mb-1">Target Minimum Input Level (dBmV)</label>
+                    <input type="number" id="targetInputLevel" value="10" class="input-field text-center" step="1">
+                    <p class="text-xs text-gray-500 mt-1">
+                        Minimum input level required at the amplifier for the calculation.
+                    </p>
+                </div>
+            </div>
+
+            <h3 class="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">Calculated Max Cable Run (Feet)</h3>
+            <p class="text-gray-400 text-sm italic mb-4">
+                This calculation finds the **longest possible span** while keeping all four frequencies &ge; Imin above the target input level.  The EQ is predicted and added to the loss.
+            </p>
+            
+            <div class="overflow-x-auto rounded-lg border border-gray-700">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-[#161b22]">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Cable Type</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Rec. EQ</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">111 MHz Max</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">753 MHz Max</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">999 MHz Max</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">1215 MHz Max</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-red-400 uppercase tracking-wider">Max Run (Limit)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="maxSpansResultsBody" class="bg-gray-800 divide-y divide-gray-700 text-sm">
+                        </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div> 
+	
+	<script>
+        // Global state to store all added passive devices (allowing duplicates)
+        let addedPassiveDevices = [];
+
+        // --- View Management Globals ---
+        const spanLossView = document.getElementById('spanLossView');
+        const tiltChartView = document.getElementById('tiltChartView');
+        const opticalBudgetView = document.getElementById('opticalBudgetView');
+        // NEW: Max Spans View
+        const maxSpansView = document.getElementById('maxSpansView');
+
+        const spanLossBtn = document.getElementById('spanLossBtn');
+        const tiltChartBtn = document.getElementById('tiltChartBtn');
+        const opticalBudgetBtn = document.getElementById('opticalBudgetBtn');
+        // NEW: Max Spans Button
+        const maxSpansBtn = document.getElementById('maxSpansBtn');
+        
+        let currentView = 'spanLoss';
+
+        // Tilt chart instance global
+        let tiltChartInstance = null;
+
+        // UPDATED: Anchor Frequencies
+        let TILT_ANCHOR_LOW = 111;
+        let TILT_ANCHOR_HIGH = 1218; // Default high anchor frequency
+
+        // UPDATED: Frequencies to calculate for the Tilt Chart (54 MHz removed)
+        const TILT_FREQUENCIES = [ 111, 207, 321, 429, 555, 633, 750, 873, 999, 1215 ].sort((a, b) => a - b); // Ensure sorted for the table/chart
+
+        // --- DOM Elements (Inputs) for Span Loss ---
+        const outputLevel111 = document.getElementById('outputLevel111');
+        const outputLevel753 = document.getElementById('outputLevel753'); // NEW 753 MHz input
+        const outputLevel999 = document.getElementById('outputLevel999');
+        const outputLevel1215 = document.getElementById('outputLevel1215');
+        const distanceInput = document.getElementById('distance');
+        const cableTypeSelect = document.getElementById('cableType');
+        const attFactorTypical = document.getElementById('attFactorTypical');
+        const attFactorMax = document.getElementById('attFactorMax');
+        const singlePassiveSelect = document.getElementById('singlePassiveSelect');
+        const addPassiveBtn = document.getElementById('addPassiveBtn');
+        const clearPassivesBtn = document.getElementById('clearPassivesBtn');
+        const addedPassivesList = document.getElementById('added-passives-list');
+        const emptyPassivesMessage = document.getElementById('empty-passives-message');
+        const amplifierEqSelect = document.getElementById('amplifierEqSelect');
+
+        // --- DOM Elements (Inputs) for Max Spans ---
+        const targetInputLevelInput = document.getElementById('targetInputLevel');
+        const maxSpansOutput111 = document.getElementById('maxSpansOutput111');
+        const maxSpansOutput753 = document.getElementById('maxSpansOutput753');
+        const maxSpansOutput999 = document.getElementById('maxSpansOutput999');
+        const maxSpansOutput1215 = document.getElementById('maxSpansOutput1215');
+        const maxSpansResultsBody = document.getElementById('maxSpansResultsBody');
+
+        // --- DOM Elements (Inputs) for Tilt Chart ---
+        const tiltLevelLowInput = document.getElementById('tiltLevelLow');
+        const tiltLevelHighInput = document.getElementById('tiltLevelHigh');
+        const tiltResultsTableBody = document.getElementById('tiltResultsTableBody');
+        const tiltHighFreqRadios = document.querySelectorAll('input[name="tiltHighFreq"]'); // NEW: Attenuation Factor Radios (hidden by new styling
+
+        // --- DOM Elements (Inputs) for Optical Budget ---
+        const opticalDistanceKm = document.getElementById('opticalDistanceKm');
+        const opticalConnectors = document.getElementById('opticalConnectors');
+        const opticalSplices = document.getElementById('opticalSplices');
+        const opticalMuxed = document.getElementById('opticalMuxed');
+        const numTransmitters = document.getElementById('numTransmitters');
+        const singleTxPower = document.getElementById('singleTxPower');
+
+        // --- DOM Elements (Outputs) for Optical Budget ---
+        const fiberLoss1310 = document.getElementById('fiberLoss1310');
+        const connLoss1310 = document.getElementById('connLoss1310');
+        const spliceLoss1310 = document.getElementById('spliceLoss1310');
+        const muxLoss1310 = document.getElementById('muxLoss1310');
+        const totalBudget1310 = document.getElementById('totalBudget1310');
+        const fiberLoss1550 = document.getElementById('fiberLoss1550');
+        const connLoss1550 = document.getElementById('connLoss1550');
+        const spliceLoss1550 = document.getElementById('spliceLoss1550');
+        const muxLoss1550 = document.getElementById('muxLoss1550');
+        const totalBudget1550 = document.getElementById('totalBudget1550');
+        const compositeOpticalPower = document.getElementById('compositeOpticalPower');
+
+
+        // Global array of calculation frequencies
+        const FREQUENCIES = ["111", "753", "999", "1215"]; // UPDATED
+
+        // Map frequencies to their DOM elements
+        const FREQUENCY_CONFIG = {
+            "111": { 
+                outputInput: outputLevel111, 
+                cableLossDisplay: document.getElementById('cable-loss-111'),
+                totalPassiveLossDisplay: document.getElementById('total-passive-loss-111'),
+                totalLossDisplay: document.getElementById('total-loss-111'),
+                inputLevelDisplay: document.getElementById('input-level-111')
+            },
+            "753": { // NEW 753 MHz config
+                outputInput: outputLevel753, 
+                cableLossDisplay: document.getElementById('cable-loss-753'),
+                totalPassiveLossDisplay: document.getElementById('total-passive-loss-753'),
+                totalLossDisplay: document.getElementById('total-loss-753'),
+                inputLevelDisplay: document.getElementById('input-level-753')
+            },
+            "999": { 
+                outputInput: outputLevel999, 
+                cableLossDisplay: document.getElementById('cable-loss-999'),
+                totalPassiveLossDisplay: document.getElementById('total-passive-loss-999'),
+                totalLossDisplay: document.getElementById('total-loss-999'),
+                inputLevelDisplay: document.getElementById('input-level-999')
+            },
+            "1215": { 
+                outputInput: outputLevel1215, 
+                cableLossDisplay: document.getElementById('cable-loss-1215'),
+                totalPassiveLossDisplay: document.getElementById('total-passive-loss-1215'),
+                totalLossDisplay: document.getElementById('total-loss-1215'),
+                inputLevelDisplay: document.getElementById('input-level-1215')
+            }
+        };
+
+        // --- CABLE LOSS DATA (dB per 100 feet) ---
+        // New structure for TYPICAL values
+        const CABLE_LOSS_DATA_TYPICAL = {
+			"MC2-500": { "111": 0.65, "555": 1.52, "753": 1.79, "999": 2.11, "1215": 2.33 },
+			"MC2-650": { "111": 0.51, "555": 1.23, "753": 1.47, "999": 1.73, "1215": 1.94 },
+			"MC2-750": { "111": 0.429, "555": 1.06, "753": 1.23, "999": 1.44, "1215": 1.589 },
+			"MC2-1000": { "111": 0.34, "555": 0.8, "753": 0.95, "999": 1.14, "1215": 1.26 },
+			"P3-500": { "111": 0.73, "555": 1.75, "753": 2.04, "999": 2.41, "1215": 2.66 },
+			"P3-625": { "111": 0.58, "555": 1.41, "753": 1.66, "999": 1.95, "1215": 2.15 },
+			"P3-750": { "111": 0.48, "555": 1.19, "753": 1.38, "999": 1.62, "1215": 1.79 },
+			"P3-875": { "111": 0.41, "555": 1.03, "753": 1.21, "999": 1.42, "1215": 1.57 },
+			"QR-540": { "111": 0.63, "555": 1.51, "753": 1.8, "999": 2.1, "1215": 2.31 },
+			"QR-715": { "111": 0.48, "555": 1.18, "753": 1.36, "999": 1.59, "1215": 1.75 },
+			"QR-860": { "111": 0.429, "555": 1.06, "753": 1.24, "999": 1.44, "1215": 1.589 },
+			"QR-1125": { "111": 0.287, "555": 0.79, "753": 0.93, "999": 1.12, "1215": 1.347 },
+			"T10-500": { "111": 0.74, "555": 1.77, "753": 2.1, "999": 2.45, "1215": 2.71 },
+			"T10-625": { "111": 0.6, "555": 1.46, "753": 1.74, "999": 2.05, "1215": 2.26 },
+			"T10-750": { "111": 0.49, "555": 1.21, "753": 1.44, "999": 1.69, "1215": 1.86 },
+			"T10-875": { "111": 0.43, "555": 1.06, "753": 1.25, "999": 1.47, "1215": 1.64 },
+			"TX10-565": { "111": 0.63, "555": 1.51, "753": 1.79, "999": 2.1, "1215": 2.32 },
+			"TX10-700": { "111": 0.5, "555": 1.21, "753": 1.45, "999": 1.7, "1215": 1.87 },
+			"TX10-840": { "111": 0.43, "555": 1.06, "753": 1.26, "999": 1.47, "1215": 1.64 }
+        };
+
+        // New structure for MAX values (dB per 100 feet)
+        const CABLE_LOSS_DATA_MAX = {
+			"MC2-500": { "111": 0.73, "555": 1.65, "753": 1.92, "999": 2.22, "1215": 2.45 },
+			"MC2-650": { "111": 0.6, "555": 1.35, "753": 1.57, "999": 1.82, "1215": 2 },
+			"MC2-750": { "111": 0.93, "555": 1.12, "753": 1.3, "999": 1.51, "1215": 1.66 },
+			"MC2-1000": { "111": 0.38, "555": 0.86, "753": 1, "999": 1.16, "1215": 1.28 },
+			"P3-500": { "111": 0.83, "555": 1.87, "753": 2.18, "999": 2.52, "1215": 2.78 },
+			"P3-625": { "111": 0.68, "555": 1.54, "753": 1.79, "999": 2.07, "1215": 2.28 },
+			"P3-750": { "111": 0.58, "555": 1.29, "753": 1.5, "999": 1.74, "1215": 1.92 },
+			"P3-875": { "111": 0.51, "555": 1.12, "753": 1.32, "999": 1.53, "1215": 1.69 },
+			"QR-540": { "111": 0.72, "555": 1.61, "753": 1.87, "999": 2.17, "1215": 2.39 },
+			"QR-715": { "111": 0.58, "555": 1.3, "753": 1.51, "999": 1.75, "1215": 1.93 },
+			"QR-860": { "111": 0.48, "555": 1.07, "753": 1.24, "999": 1.44, "1215": 1.59 },
+			"QR-1125": { "111": 0.4, "555": 0.89, "753": 1.04, "999": 1.2, "1215": 1.32 },
+			"T10-500": { "111": 0.84, "555": 1.88, "753": 2.18, "999": 2.53, "1215": 2.79 },
+			"T10-625": { "111": 0.7, "555": 1.57, "753": 1.82, "999": 2.11, "1215": 2.32 },
+			"T10-750": { "111": 0.58, "555": 1.29, "753": 1.5, "999": 1.74, "1215": 1.92 },
+			"T10-875": { "111": 0.51, "555": 1.14, "753": 1.32, "999": 1.53, "1215": 1.69 },
+			"TX10-565": { "111": 0.72, "555": 1.61, "753": 1.87, "999": 2.17, "1215": 2.39 },
+			"TX10-700": { "111": 0.58, "555": 1.3, "753": 1.51, "999": 1.75, "1215": 1.93 },
+			"TX10-840": { "111": 0.51, "555": 1.14, "753": 1.32, "999": 1.53, "1215": 1.69 }
+        };
+        
+        // Array of all cable types for easy iteration in Max Spans calculation
+        const ALL_CABLE_TYPES = Object.keys(CABLE_LOSS_DATA_TYPICAL);
+
+
+        // --- PASSIVE DEVICE LOSS DATA (Insertion Loss) ---
+        // Loss values for 111, 753, 999, 1215 MHz
+        const PASSIVE_LOSS_DATA = {
+            "2P 4V": { "111": 0, "753": 0, "999": 0, "1215": 0 },
+			"2P 8V": { "111": 3.3, "753": 3.8, "999": 3.8, "1215": 4.4 },
+			"2P 11V": { "111": 1.3, "753": 2.3, "999": 2.6, "1215": 3 },
+			"2P 14V": { "111": 0.8, "753": 1.5, "999": 1.9, "1215": 2.3 },
+			"2P 17V": { "111": 0.8, "753": 1.2, "999": 1.3, "1215": 1.7 },
+			"2P 20V": { "111": 0.5, "753": 1.2, "999": 1.4, "1215": 1.6 },
+			"2P 23V": { "111": 0.4, "753": 1, "999": 1.2, "1215": 1.6 },
+			"2P 26V": { "111": 0.4, "753": 1, "999": 1.2, "1215": 1.6 },
+			"2P 29V": { "111": 0.4, "753": 1, "999": 1.2, "1215": 1.6 },
+			"4P 8V": { "111": 0, "753": 0, "999": 0, "1215": 0 },
+			"4P 11V": { "111": 3.3, "753": 4, "999": 3.9, "1215": 4.3 },
+			"4P 14V": { "111": 1.4, "753": 2.4, "999": 2.6, "1215": 3.3 },
+			"4P 17V": { "111": 0.9, "753": 1.6, "999": 2, "1215": 2.2 },
+			"4P 20V": { "111": 0.8, "753": 1.3, "999": 1.5, "1215": 1.7 },
+			"4P 23V": { "111": 0.6, "753": 1.3, "999": 1.3, "1215": 1.6 },
+			"4P 26V": { "111": 0.4, "753": 1, "999": 1.1, "1215": 1.4 },
+			"4P 29V": { "111": 0.4, "753": 1, "999": 1.1, "1215": 1.4 },
+			"8P 12V": { "111": 0, "753": 0, "999": 0, "1215": 0 },
+			"8P 15V": { "111": 3.3, "753": 4.1, "999": 4, "1215": 4.5 },
+			"8P 18V": { "111": 1.4, "753": 2.3, "999": 2.7, "1215": 3.3 },
+			"8P 24V": { "111": 0.7, "753": 1.3, "999": 1.6, "1215": 2.1 },
+			"8P 27V": { "111": 0.5, "753": 1, "999": 1.4, "1215": 1.8 },
+			"DC8 (THROUGH)": { "111": 1.9, "753": 2.2, "999": 3, "1215": 3.5 },
+			"DC8 (TAP)": { "111": 8.3, "753": 8.3, "999": 8.9, "1215": 8.9 },
+			"DC12 (THROUGH)": { "111": 1.2, "753": 1.6, "999": 2.4, "1215": 2.9 },
+			"DC12 (TAP)": { "111": 12.3, "753": 12.4, "999": 12.7, "1215": 12.7 },
+			"2W SPLIT": { "111": 3.6, "753": 4.2, "999": 4.9, "1215": 5.4 },
+			"3W SPLIT (LOW LOSS)": { "111": 4.1, "753": 4.8, "999": 5.4, "1215": 5.8 },
+			"3W SPLIT (HIGH LOSS)": { "111": 7.4, "753": 8.2, "999": 9, "1215": 9.3 },
+			"3W SPLIT (BALANCED)": { "111": 6.3, "753": 7.3, "999": 7.7, "1215": 8.7 },
+			"PI": { "111": 0.5, "753": 0.7, "999": 1, "1215": 1.6 }
+        };
+
+        // --- AMPLIFIER EQ LOSS DATA (Insertion Loss) ---
+        const EQ_LOSS_DATA = {
+            "CE-120-1": { "111": 2.0, "753": 0.8, "999": 0.5, "1215": 0.2 },
+            "CE-120-2": { "111": 2.9, "753": 1.1, "999": 0.6, "1215": 0.2 },
+            "CE-120-3": { "111": 3.8, "753": 1.4, "999": 0.8, "1215": 0.3 },
+            "CE-120-4": { "111": 4.7, "753": 1.8, "999": 1.0, "1215": 0.4 },
+            "CE-120-5": { "111": 5.6, "753": 2.2, "999": 1.2, "1215": 0.5 },
+            "CE-120-6": { "111": 6.1, "753": 2.5, "999": 1.5, "1215": 0.7 },
+            "CE-120-7": { "111": 7.0, "753": 2.8, "999": 1.6, "1215": 0.7 },
+            "CE-120-8": { "111": 7.9, "753": 3.1, "999": 1.7, "1215": 0.7 },
+            "CE-120-9": { "111": 8.8, "753": 3.4, "999": 1.9, "1215": 0.7 },
+            "CE-120-10": { "111": 9.7, "753": 3.7, "999": 2.0, "1215": 0.7 },
+            "CE-120-11": { "111": 10.6, "753": 4.0, "999": 2.1, "1215": 0.7 },
+            "CE-120-12": { "111": 11.5, "753": 4.3, "999": 2.3, "1215": 0.7 },
+            "CE-120-13": { "111": 12.4, "753": 4.5, "999": 2.4, "1215": 0.7 },
+            "CE-120-14": { "111": 13.3, "753": 4.8, "999": 2.5, "1215": 0.7 },
+            "CE-120-15": { "111": 14.2, "753": 5.1, "999": 2.7, "1215": 0.7 },
+            "CE-120-16": { "111": 15.1, "753": 5.4, "999": 2.8, "1215": 0.7 },
+            "CE-120-17": { "111": 16.0, "753": 5.7, "999": 2.9, "1215": 0.7 },
+            "CE-120-18": { "111": 16.9, "753": 6.0, "999": 3.1, "1215": 0.7 },
+            "CE-120-19": { "111": 17.8, "753": 6.3, "999": 3.2, "1215": 0.7 },
+            "CE-120-20": { "111": 18.7, "753": 6.6, "999": 3.3, "1215": 0.7 }
+        };
+        
+        // Array of all EQ keys, including "None" for iteration
+        const ALL_EQS = Object.keys(EQ_LOSS_DATA).concat(["None"]);
+
+        // --- Optical Budget Constants (Industry Standards) ---
+        const LOSS_PER_KM_1310 = 0.4; // dB/km
+        const LOSS_PER_KM_1550 = 0.25; // dB/km
+        const LOSS_PER_CONNECTOR = 0.75; // dB/connector
+        const LOSS_PER_SPLICE = 0.1; // dB/splice
+        const MUX_DEMUX_LOSS = 3.0; // dB
+
+        // --- Core Calculation Logic ---
+
+        /**
+         * Determines the correct attenuation data set based on the radio button selection.
+         * @returns {object} The CABLE_LOSS_DATA_TYPICAL or CABLE_LOSS_DATA_MAX object.
+         */
+        function getCableLossDataSet() {
+            if (attFactorMax.checked) {
+                return CABLE_LOSS_DATA_MAX;
+            }
+            return CABLE_LOSS_DATA_TYPICAL;
+        }
+
+        /**
+         * Renders the detailed breakdown of passive loss.
+         */
+        function displayPassiveLossDetails() {
+            const passiveDetailsContainer = document.getElementById('passive-loss-details');
+            const selectedAmplifierEQ = document.getElementById('amplifierEqSelect').value;
+
+            // Handle the case of zero passive/EQ loss
+            if (addedPassiveDevices.length === 0 && (!selectedAmplifierEQ || selectedAmplifierEQ === "None")) {
+                passiveDetailsContainer.innerHTML = `
+                    <div class="grid grid-cols-5 gap-2 items-center text-sm">
+                        <div class="text-gray-500 font-light italic pl-2 col-span-5 text-center">
+                            No passive loss applied.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            // Group devices by type and count
+            const deviceCounts = addedPassiveDevices.reduce((acc, device) => {
+                acc[device] = (acc[device] || 0) + 1;
+                return acc;
+            }, {});
+
+            // Add the selected EQ as a single “device” if selected
+            if (selectedAmplifierEQ && selectedAmplifierEQ !== "None") {
+                deviceCounts[selectedAmplifierEQ] = 1;
+            }
+
+            let htmlContent = '';
+            for (const deviceType in deviceCounts) {
+                const count = deviceCounts[deviceType];
+                let data = PASSIVE_LOSS_DATA[deviceType];
+
+                // ✅ Use EQ loss data if this device is an Amplifier EQ
+                if (!data && EQ_LOSS_DATA[deviceType]) {
+                    data = EQ_LOSS_DATA[deviceType];
+                }
+
+                if (data) {
+                    const totalLoss111 = data["111"] * count;
+                    const totalLoss753 = data["753"] * count; // New 753
+                    const totalLoss999 = data["999"] * count;
+                    const totalLoss1215 = data["1215"] * count;
+                    
+                    // Label EQ more clearly
+                    const displayName = EQ_LOSS_DATA[deviceType] ? `Amplifier EQ: ${deviceType}` : `(${count}x) ${deviceType}`;
+
+                    htmlContent += `
+                        <div class="grid grid-cols-5 gap-2 items-center text-sm ${EQ_LOSS_DATA[deviceType] ? 'bg-[#161E2A] text-teal-300 font-semibold rounded-md px-1' : ''}">
+                            <div class="text-gray-500 font-light pl-2">${displayName}</div>
+                            <div class="output-value-loss text-center">${totalLoss111.toFixed(2)}</div>
+                            <div class="output-value-loss text-center">${totalLoss753.toFixed(2)}</div>
+                            <div class="output-value-loss text-center">${totalLoss999.toFixed(2)}</div>
+                            <div class="output-value-loss text-center">${totalLoss1215.toFixed(2)}</div>
+                        </div>
+                    `;
+                }
+            }
+            passiveDetailsContainer.innerHTML = htmlContent;
+        }
+
+
+        /**
+         * Passive Device List Management
+         */
+        function addPassiveDevice() {
+            const selectedDevice = singlePassiveSelect.value;
+            if (selectedDevice) {
+                addedPassiveDevices.push(selectedDevice);
+                renderAddedPassives();
+                calculateSpanLoss();
+            }
+        }
+
+        function clearPassiveSelection() {
+            addedPassiveDevices = [];
+            renderAddedPassives();
+            calculateSpanLoss();
+        }
+
+        function renderAddedPassives() {
+            if (addedPassiveDevices.length === 0) {
+                emptyPassivesMessage.style.display = 'block';
+            } else {
+                emptyPassivesMessage.style.display = 'none';
+            }
+
+            addedPassivesList.innerHTML = '';
+            addedPassiveDevices.forEach((device, index) => {
+                const deviceElement = document.createElement('div');
+                deviceElement.className = 'flex justify-between items-center bg-gray-700 p-1 rounded';
+                deviceElement.innerHTML = `
+                    <span class="text-white ml-2">${device}</span>
+                    <button class="remove-btn text-red-400 hover:text-red-300 p-1 rounded-full flex items-center justify-center" data-index="${index}">
+                        &times;
+                    </button>
+                `;
+                addedPassivesList.appendChild(deviceElement);
+            });
+
+            // Add click listener to the newly created remove buttons
+            addedPassivesList.querySelectorAll('.remove-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = parseInt(e.currentTarget.getAttribute('data-index'));
+                    addedPassiveDevices.splice(index, 1);
+                    renderAddedPassives(); // Recalculate and re-render the list/span loss
+                    calculateSpanLoss();
+                });
+            });
+        }
+
+        // --- Shared Utility Functions ---
+
+        /**
+         * Applies conditional color styling based on the calculated input level.
+         * @param {HTMLElement} element - The DOM element to style.
+         * @param {number} inputLevel - The calculated input level in dBmV.
+         */
+        function applyInputColor(element, inputLevel) {
+            // Clear existing color classes
+            element.classList.remove('output-value-good', 'output-value-marginal', 'output-value-critical');
+
+            // Apply new color based on thresholds
+            if (inputLevel < 4.00) { // Critical: Below 4 dBmV (Red)
+                element.classList.add('output-value-critical');
+            } else if (inputLevel < 5.00) { // Warning: Between 4 dBmV and 5 dBmV (Yellow/Marginal)
+                element.classList.add('output-value-marginal');
+            } else { // Nominal/Good: 5 dBmV and above (Green)
+                element.classList.add('output-value-good');
+            }
+        }
+
+        /**
+         * Applies conditional color styling based on the calculated loss value (0 loss is white).
+         * @param {HTMLElement} element - The DOM element to style (Total Loss or Total Passive Loss).
+         * @param {number} lossValue - The calculated loss in dB.
+         */
+        function applyLossColor(element, lossValue) {
+            // Clear existing color classes
+            element.classList.remove('output-value-default', 'output-value-loss');
+
+            if (lossValue === 0) {
+                element.classList.add('output-value-default'); // White/Light-gray for 0 loss
+            } else {
+                element.classList.add('output-value-loss'); // Yellow/Neon-Loss color
+            }
+        }
+        
+        /**
+         * Updates the read-only output level fields in the Max Spans view
+         * from the editable fields in the RF Span Loss view.
+         */
+        function mirrorTargetOutputLevels() {
+            maxSpansOutput111.value = parseFloat(outputLevel111.value).toFixed(2);
+            maxSpansOutput753.value = parseFloat(outputLevel753.value).toFixed(2);
+            maxSpansOutput999.value = parseFloat(outputLevel999.value).toFixed(2);
+            maxSpansOutput1215.value = parseFloat(outputLevel1215.value).toFixed(2);
+        }
+
+        /**
+         * Calculates and updates the display for a single, specified frequency (Span Loss View).
+         * @param {string} frequency - The frequency key ("111", "753", "999", or "1215").
+         */
+        function calculateAndDisplayFrequency(frequency) {
+            const distance = parseFloat(distanceInput.value) || 0;
+            const cableType = cableTypeSelect.value;
+            const selectedPassives = addedPassiveDevices;
+            const selectedAmplifierEQ = amplifierEqSelect.value;
+
+            // Get the specific configuration for this frequency
+            const config = FREQUENCY_CONFIG[frequency];
+            const outputLevel = parseFloat(config.outputInput.value) || 0;
+            
+            // 1. Determine Cable Loss per 100 ft (based on Cable Type and Attenuation Factor)
+            const cableLossData = getCableLossDataSet();
+            let cableLossPer100Ft = cableLossData[cableType]?.[frequency];
+
+            if (cableLossPer100Ft === undefined) {
+                console.error(`Cable loss data for ${cableType} at ${frequency} MHz is missing! (using 0.00 dB/100ft)`);
+                cableLossPer100Ft = 0;
+            }
+
+            // 2. Calculate Total Cable Loss (distance in feet / 100 feet * loss per 100 feet)
+            const cableLoss = (distance / 100) * cableLossPer100Ft;
+            
+            // Update Cable Loss Display
+            config.cableLossDisplay.textContent = cableLoss.toFixed(2);
+
+            // 3. Calculate Passive Insertion Loss
+            let totalPassiveLoss = 0;
+
+            // Iterate over every instance in the array (this handles duplicates)
+            selectedPassives.forEach(passiveType => {
+                const passiveLoss = PASSIVE_LOSS_DATA[passiveType]?.[frequency];
+                if (passiveLoss !== undefined) {
+                    totalPassiveLoss += passiveLoss;
+                } else {
+                    console.warn(`Passive loss data for ${passiveType} at ${frequency} MHz is missing from the data table (treated as 0 dB).`);
+                }
+            });
+
+            // Add amplifier EQ loss if selected
+            if (selectedAmplifierEQ && selectedAmplifierEQ !== "None") {
+                const eqLoss = EQ_LOSS_DATA[selectedAmplifierEQ]?.[frequency];
+                if (eqLoss !== undefined) {
+                    totalPassiveLoss += eqLoss;
+                }
+            }
+
+            // 4. Update Total Passive Loss Display (Apply color and text format)
+            applyLossColor(config.totalPassiveLossDisplay, totalPassiveLoss);
+            config.totalPassiveLossDisplay.textContent = totalPassiveLoss.toFixed(2);
+
+            // 5. Calculate Total Span Loss
+            const totalLoss = cableLoss + totalPassiveLoss;
+
+            // 6. Calculate Required Input Level (Input = Output Level - Total Loss)
+            const requiredInput = outputLevel - totalLoss; 
+
+            // 7. Update Display (Apply color and update text for Total Loss)
+            applyLossColor(config.totalLossDisplay, totalLoss);
+            config.totalLossDisplay.textContent = totalLoss.toFixed(2);
+
+            // 8. Apply conditional color and update text for Input Level
+            applyInputColor(config.inputLevelDisplay, requiredInput);
+            config.inputLevelDisplay.textContent = requiredInput.toFixed(2);
+        }
+
+        // Main calculation function: runs the calculation for all four frequencies
+        function calculateSpanLoss() {
+            // 1. Update the detailed passive loss view once
+            displayPassiveLossDetails();
+            
+            // 2. Run the calculation for all totals and final inputs
+            FREQUENCIES.forEach(calculateAndDisplayFrequency);
+
+            // 3. Trigger mirroring and Max Spans calculation
+            mirrorTargetOutputLevels();
+            calculateAndRenderMaxSpans();
+        }
+
+        // --- NEW: Max Spans Calculation Logic (REVISED to constrain ALL 4 Frequencies) ---
+        
+        /**
+         * Calculates and renders the Max Spans table by iterating through all EQs
+         * to find the one that maximizes distance while meeting the <= 1 dBmV tilt tolerance 
+         * and the I_min constraint for all four frequencies.
+         */
+        function calculateAndRenderMaxSpans() {
+            mirrorTargetOutputLevels(); // Ensure mirrored values are up-to-date
+            
+            const Im = parseFloat(targetInputLevelInput.value) || 0; // Target Minimum Input Level
+            const cableLossData = getCableLossDataSet(); // Use selected Attenuation Factor (Typical or Max)
+
+            // 1. Get current Target Output Levels
+            const O_f = {
+                "111": parseFloat(outputLevel111.value) || 0,
+                "753": parseFloat(outputLevel753.value) || 0,
+                "999": parseFloat(outputLevel999.value) || 0,
+                "1215": parseFloat(outputLevel1215.value) || 0,
+            };
+
+            let tableHTML = '';
+            
+            // Utility function to format the distance for display
+            const formatDistance = (dist, isLimit = false) => {
+                if (dist < 0 || isNaN(dist) || dist === 0) return `<span class="text-red-500 font-medium">N/A</span>`;
+                if (dist === Infinity) return `<span class="text-green-500 font-medium">∞</span>`;
+                
+                if (isLimit) {
+                    return `<span class="text-red-400 font-extrabold">${dist.toFixed(0)}</span>`;
+                }
+                
+                return `<span class="text-gray-200">${dist.toFixed(0)}</span>`; 
+            };
+
+            // 2. Loop through all cable types
+            ALL_CABLE_TYPES.forEach(cableType => {
+                let overallMaxRun = 0;
+                let bestEqKey = "None";
+                let bestMaxDistances = { "111": 0, "753": 0, "999": 0, "1215": 0 }; // Stores distances for the best EQ found
+
+                let cableData = cableLossData[cableType];
+                
+                // --- OPTIMIZATION LOOP: Find the EQ that maximizes span AND meets tilt ---
+                
+                ALL_EQS.forEach(eqKey => {
+                    const currentEqLoss = eqKey === "None" ? { "111": 0, "753": 0, "999": 0, "1215": 0 } : EQ_LOSS_DATA[eqKey];
+                    let minMaxDistForThisEQ = Infinity;
+                    let distancesForThisEQ = {};
+
+                    // A. Calculate Max Span based on I_min for ALL FOUR frequencies
+                    FREQUENCIES.forEach(freq => {
+                        const O = O_f[freq];
+                        const C = cableData?.[freq];
+                        const E = currentEqLoss[freq] || 0; // Ensure E is 0 if data is missing or "None" is selected
+                        
+                        // Max Cable Loss allowed: L_max_cable = (Output - I_min) - EQ_Loss
+                        const L_max_cable = (O - Im) - E;
+                        
+                        let D_max;
+                        if (C === undefined || C <= 0) {
+                            D_max = Infinity; 
+                        } else if (L_max_cable <= 0) {
+                            D_max = -1; // Marker for impossible span
+                        } else {
+                            // D_max (feet) = (L_max_cable / C) * 100
+                            D_max = (L_max_cable / C) * 100;
+                        }
+
+                        distancesForThisEQ[freq] = D_max;
+                        if (D_max >= 0) { // Only consider positive distances
+                             minMaxDistForThisEQ = Math.min(minMaxDistForThisEQ, D_max);
+                        }
+                    });
+
+                    const D_EQ = minMaxDistForThisEQ; // The shortest distance is the limiting max span for this EQ
+                    
+                    if (D_EQ > 0 && D_EQ !== Infinity) {
+                        
+                        // B. Check TILT Constraint at the limiting Max Span (D_EQ)
+                        const D_hf = D_EQ / 100;
+
+                        const C_111 = cableData["111"] || 0;
+                        const C_999 = cableData["999"] || 0;
+                        
+                        const E_111 = currentEqLoss["111"] || 0;
+                        const E_999 = currentEqLoss["999"] || 0;
+
+                        // Calculate input levels at this limiting distance D_EQ
+                        const I_111 = O_f["111"] - (C_111 * D_hf) - E_111;
+                        const I_999 = O_f["999"] - (C_999 * D_hf) - E_999;
+                        const T_input = Math.abs(I_111 - I_999);
+                        
+                        // C. Choose the EQ that maximizes span AND meets tilt
+                        // **FIX: Added tolerance (1.0001) for floating point errors in the tilt check.**
+                        if (T_input <= 1.0001) { // Tilt tolerance met (within 1.0 dBmV)
+                            if (D_EQ > overallMaxRun) {
+                                overallMaxRun = D_EQ;
+                                bestEqKey = eqKey;
+                                // Store the specific max distances calculated for this best EQ
+                                bestMaxDistances = distancesForThisEQ; 
+                            }
+                        }
+                    }
+                }); 
+                
+                // --- END OPTIMIZATION LOOP ---
+                
+                // 3. If no EQ met the 1 dB tilt requirement (and maxRun is still 0), fall back to the longest span achievable with no EQ (regardless of tilt), if > 0.
+                if (overallMaxRun === 0) {
+                    const noneEqLoss = { "111": 0, "753": 0, "999": 0, "1215": 0 };
+                    let minMaxDistNone = Infinity;
+                    let distancesForNone = {};
+                    
+                    FREQUENCIES.forEach(freq => {
+                        const O = O_f[freq];
+                        const C = cableData?.[freq];
+                        const L_max_cable = (O - Im);
+                        let D_max = (C === undefined || C <= 0 || L_max_cable <= 0) ? -1 : (L_max_cable / C) * 100;
+                        distancesForNone[freq] = D_max;
+                        if (D_max >= 0) {
+                             minMaxDistNone = Math.min(minMaxDistNone, D_max);
+                        }
+                    });
+
+                    if (minMaxDistNone > 0 && minMaxDistNone !== Infinity) {
+                         overallMaxRun = minMaxDistNone;
+                         bestEqKey = "None";
+                         bestMaxDistances = distancesForNone;
+                    }
+                }
+
+                
+                // 4. Format and render the row
+                const finalLimitDisplay = formatDistance(overallMaxRun, true);
+                const eqDisplay = bestEqKey === "None" ? `<span class="text-gray-500 italic">None</span>` : `<span class="text-[#4ECDC4] font-bold">${bestEqKey}</span>`;
+                
+                tableHTML += `
+                    <tr class="hover:bg-gray-700 ${bestEqKey !== "None" ? 'eq-row' : ''}">
+                        <td class="px-4 py-2 whitespace-nowrap text-left font-medium text-gray-300">${cableType}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${eqDisplay}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${formatDistance(bestMaxDistances["111"])}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${formatDistance(bestMaxDistances["753"])}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${formatDistance(bestMaxDistances["999"])}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${formatDistance(bestMaxDistances["1215"])}</td>
+                        <td class="px-4 py-2 whitespace-nowrap text-center">${finalLimitDisplay}</td>
+                    </tr>
+                `;
+            });
+
+            // 5. Update the table body
+            maxSpansResultsBody.innerHTML = tableHTML;
+        }
+
+
+        // --- Tilt Chart Logic (UNCHANGED) ---
+
+        /**
+         * Initializes the Tilt Chart using Chart.js.
+         */
+        function setupTiltChart() {
+            // Function definition omitted for brevity, assumed to be correct from user's file.
+             if (tiltChartInstance) {
+                tiltChartInstance.destroy(); // Destroy old instance if it exists
+            }
+            const ctx = document.getElementById('tiltChart').getContext('2d');
+            const data = {
+                labels: TILT_FREQUENCIES.map(f => `${f} MHz`),
+                datasets: [
+                    {
+                        label: 'Digital Output (dBmV)',
+                        data: [], // Will be filled in calculateAndRenderTilt
+                        borderColor: '#4ECDC4', // Teal for digital
+                        backgroundColor: 'rgba(78, 205, 196, 0.1)',
+                        tension: 0.2, // Slightly curved line
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#4ECDC4'
+                    },
+                    {
+                        label: 'Analog Output (dBmV)',
+                        data: [], // Will be filled in calculateAndRenderTilt (+6 dB)
+                        borderColor: '#facc15', // Yellow for analog
+                        backgroundColor: 'rgba(250, 204, 21, 0.05)',
+                        tension: 0.2,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#facc15'
+                    }
+                ]
+            };
+            
+            tiltChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#e5e7eb'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y.toFixed(2) + ' dBmV';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Frequency (MHz)',
+                                color: '#9ca3af'
+                            },
+                            grid: {
+                                color: 'rgba(255,255,255,0.1)'
+                            },
+                            ticks: {
+                                color: '#e5e7eb'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Output Level (dBmV)',
+                                color: '#9ca3af'
+                            },
+                            grid: {
+                                color: 'rgba(255,255,255,0.1)'
+                            },
+                            ticks: {
+                                color: '#e5e7eb'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        /**
+         * Calculates the output level for a given frequency using linear interpolation.
+         * @param {number} F - The target frequency in MHz.
+         * @param {number} Llow - The output level at the low anchor frequency (111 MHz).
+         * @param {number} Lhigh - The output level at the high anchor frequency (1218 MHz).
+         * @returns {number} The calculated output level in dBmV.
+         */
+        function calculateLinearLevel(F, Llow, Lhigh) {
+            const F1 = TILT_ANCHOR_LOW;
+            const F2 = TILT_ANCHOR_HIGH;
+
+            // Compute slope between anchors
+            const slope = (Lhigh - Llow) / (F2 - F1);
+
+            if (F <= F1) return Llow; // below low anchor
+            if (F >= F2) return Lhigh + slope * (F - F2); // extrapolate beyond high anchor
+
+            return Llow + slope * (F - F1); // interpolate in-between
+        }
+
+        /**
+         * Main function for the Tilt Calculator: reads inputs, calculates all levels, and updates UI.
+         */
+        function calculateAndRenderTilt() {
+            const Llow = parseFloat(tiltLevelLowInput.value) || 0;
+            const Lhigh = parseFloat(tiltLevelHighInput.value) || 0;
+            
+            // Update the high anchor frequency based on selected radio button
+            const selectedHighFreq = document.querySelector('input[name="tiltHighFreq"]:checked');
+            if(selectedHighFreq) {
+                TILT_ANCHOR_HIGH = parseFloat(selectedHighFreq.value);
+            }
+            
+            const results = [];
+            const chartDataPoints = []; // Digital output data for the chart
+
+            // The level at 111 MHz is the anchor point
+            const L111 = calculateLinearLevel(TILT_ANCHOR_LOW, Llow, Lhigh);
+
+            // 1. Calculate levels for all desired frequencies
+            TILT_FREQUENCIES.forEach(f => {
+                const level = calculateLinearLevel(f, Llow, Lhigh);
+                const tilt = level - L111; // Tilt relative to 111 MHz
+
+                results.push({
+                    frequency: f,
+                    level: level,
+                    tilt: tilt
+                });
+                chartDataPoints.push(level); // Digital level
+            });
+
+            // 2. Update the Table
+			tiltResultsTableBody.innerHTML = '';
+			results.forEach(result => {
+				const tr = document.createElement('tr');
+				tr.className = 'hover:bg-gray-700';
+				
+				// The following lines were removed to fulfill the request for a consistent color:
+				// let levelClass = 'text-gray-300';
+				// if (result.frequency === TILT_ANCHOR_LOW || result.frequency === TILT_ANCHOR_HIGH) {
+				//     levelClass = 'text-[#4ECDC4]'; // Teal for anchors
+				// } else if (Math.abs(result.tilt) > 2.00) {
+				//     levelClass = 'text-red-400';
+				// } else if (Math.abs(result.tilt) > 1.00) {
+				//     levelClass = 'text-yellow-400';
+				// }
+				
+				// The Output Level (dBmV) column now uses a fixed text-gray-300 class.
+				const consistentLevelClass = 'text-gray-300';
+
+				// Analog Output is Digital + 6dB
+				const analogOutput = result.level + 6;
+				tr.innerHTML = `
+					<td class="px-4 py-2 whitespace-nowrap text-left text-gray-300">${result.frequency} MHz</td>
+					<td class="px-4 py-2 whitespace-nowrap text-right font-bold ${consistentLevelClass}">${result.level.toFixed(2)}</td>
+					<td class="px-4 py-2 whitespace-nowrap text-right font-bold text-gray-300">${analogOutput.toFixed(2)}</td>
+					<td class="px-4 py-2 whitespace-nowrap text-right font-medium text-gray-200">${result.tilt.toFixed(2)}</td>
+				`;
+				tiltResultsTableBody.appendChild(tr);
+			});
+
+            // 3. Update the Chart
+            if (!tiltChartInstance) {
+                setupTiltChart(); // Initialize if not done already
+            }
+
+            // Update labels and data
+            tiltChartInstance.data.labels = TILT_FREQUENCIES.map(f => `${f} MHz`);
+            const analogDataPoints = results.map(r => r.level + 6);
+
+            tiltChartInstance.data.datasets[0].data = chartDataPoints; // digital
+            tiltChartInstance.data.datasets[1].data = analogDataPoints; // analog (+6)
+            tiltChartInstance.update();
+        }
+
+        // --- Optical Budget Calculation Logic (UNCHANGED) ---
+
+        /**
+         * Calculates the total composite optical power in dBm.
+         * Formula: $P_{total} = P_{tx} + 10 \log_{10}(N)$
+         */
+        function calculateCompositePower() {
+            // Use parseInt/parseFloat with || to safely handle empty inputs
+            const N = parseInt(numTransmitters.value) || 0;
+            const Ptx_dBm = parseFloat(singleTxPower.value) || 0;
+            
+            let compositePower;
+            let colorClass;
+
+            if (N <= 0) {
+                compositePower = 0.00;
+                colorClass = 'output-value-default'; // Light Gray
+            } else if (N === 1) {
+                compositePower = Ptx_dBm;
+                colorClass = 'output-value-good'; // Green
+            } else {
+                // $P_{total} = P_{tx} + 10 \log_{10}(N)$
+                compositePower = Ptx_dBm + 10 * Math.log10(N);
+                colorClass = 'output-value-good'; // Green
+            }
+            
+            // Clear existing color classes
+            compositeOpticalPower.classList.remove('output-value-good', 'output-value-default', 'output-value-critical');
+            compositeOpticalPower.classList.add(colorClass);
+            compositeOpticalPower.textContent = compositePower.toFixed(2);
+        }
+
+        /**
+         * Calculates the total optical loss budget.
+         */
+        function calculateOpticalBudget() {
+            const distance = parseFloat(opticalDistanceKm.value) || 0;
+            const connectors = parseInt(opticalConnectors.value) || 0;
+            const splices = parseInt(opticalSplices.value) || 0;
+            const mux = opticalMuxed.checked;
+            const muxLoss = mux ? MUX_DEMUX_LOSS : 0;
+
+            // --- 1310 nm Calculations ---
+            const fiberLoss1310_val = distance * LOSS_PER_KM_1310;
+            const connLoss1310_val = connectors * LOSS_PER_CONNECTOR;
+            const spliceLoss1310_val = splices * LOSS_PER_SPLICE;
+            const totalBudget1310_val = fiberLoss1310_val + connLoss1310_val + spliceLoss1310_val + muxLoss;
+
+            // Update 1310 nm outputs
+            fiberLoss1310.textContent = fiberLoss1310_val.toFixed(2);
+            connLoss1310.textContent = connLoss1310_val.toFixed(2);
+            spliceLoss1310.textContent = spliceLoss1310_val.toFixed(2);
+            muxLoss1310.textContent = muxLoss.toFixed(2);
+            totalBudget1310.textContent = totalBudget1310_val.toFixed(2);
+
+            // --- 1550 nm Calculations ---
+            const fiberLoss1550_val = distance * LOSS_PER_KM_1550;
+            const connLoss1550_val = connectors * LOSS_PER_CONNECTOR;
+            const spliceLoss1550_val = splices * LOSS_PER_SPLICE;
+            const totalBudget1550_val = fiberLoss1550_val + connLoss1550_val + spliceLoss1550_val + muxLoss;
+
+            // Update 1550 nm outputs
+            fiberLoss1550.textContent = fiberLoss1550_val.toFixed(2);
+            connLoss1550.textContent = connLoss1550_val.toFixed(2);
+            spliceLoss1550.textContent = spliceLoss1550_val.toFixed(2);
+            muxLoss1550.textContent = muxLoss.toFixed(2);
+            totalBudget1550.textContent = totalBudget1550_val.toFixed(2);
+
+            // NEW: Call the composite power calculation after all other optical calculations
+            calculateCompositePower();
+        }
+
+
+        // --- View Switching Logic (UPDATED for 4 views) ---
+        function switchView(viewName) {
+            currentView = viewName; 
+            // 1. Hide all views
+            spanLossView.style.display = 'none';
+            tiltChartView.style.display = 'none';
+            opticalBudgetView.style.display = 'none';
+            // NEW: Hide Max Spans View
+            maxSpansView.style.display = 'none';
+
+            // 2. Reset all buttons to inactive state
+            spanLossBtn.classList.remove('bg-[#4ECDC4]', 'text-gray-900', 'shadow-md');
+            spanLossBtn.classList.add('text-gray-300', 'hover:bg-[#30363d]');
+            tiltChartBtn.classList.remove('bg-[#4ECDC4]', 'text-gray-900', 'shadow-md');
+            tiltChartBtn.classList.add('text-gray-300', 'hover:bg-[#30363d]');
+            opticalBudgetBtn.classList.remove('bg-[#4ECDC4]', 'text-gray-900', 'shadow-md');
+            opticalBudgetBtn.classList.add('text-gray-300', 'hover:bg-[#30363d]');
+            // NEW: Reset Max Spans Button
+            maxSpansBtn.classList.remove('bg-[#4ECDC4]', 'text-gray-900', 'shadow-md'); 
+            maxSpansBtn.classList.add('text-gray-300', 'hover:bg-[#30363d]');
+            
+            // 3. Show the selected view and set the active button
+            let activeButton;
+            let activeView;
+
+            switch (viewName) {
+                case 'spanLoss':
+                    activeView = spanLossView;
+                    activeButton = spanLossBtn;
+                    break;
+                case 'tiltChart':
+                    activeView = tiltChartView;
+                    activeButton = tiltChartBtn;
+                    // Trigger initial calculations/render for the chart if it's not ready
+                    if (tiltChartInstance) {
+                        calculateAndRenderTilt();
+                    }
+                    break;
+                case 'opticalBudget':
+                    activeView = opticalBudgetView;
+                    activeButton = opticalBudgetBtn;
+                    calculateOpticalBudget();
+                    break;
+                case 'maxSpans': // NEW: Max Spans View Case
+                    activeView = maxSpansView;
+                    activeButton = maxSpansBtn;
+                    calculateAndRenderMaxSpans(); // Initial calculation for Max Spans
+                    break;
+                default:
+                    // Default to span loss view
+                    activeView = spanLossView;
+                    activeButton = spanLossBtn;
+                    break;
+            }
+
+            activeView.style.display = 'block';
+            activeButton.classList.remove('text-gray-300', 'hover:bg-[#30363d]');
+            activeButton.classList.add('bg-[#4ECDC4]', 'text-gray-900', 'shadow-md');
+        }
+
+        // --- Event Listeners (Triggers) ---
+
+        // Span Loss listeners (Updated to also trigger Max Spans calculation)
+        [
+            distanceInput, cableTypeSelect, amplifierEqSelect, attFactorTypical, attFactorMax,
+            outputLevel111, outputLevel753, outputLevel999, outputLevel1215
+        ].forEach(input => {
+            input.addEventListener('input', calculateSpanLoss);
+            input.addEventListener('change', calculateSpanLoss);
+        });
+        
+        // Passive device handlers already set up above
+        addPassiveBtn.addEventListener('click', addPassiveDevice);
+        clearPassivesBtn.addEventListener('click', clearPassiveSelection);
+
+        // NEW: Max Spans Listener (Target Input only)
+        targetInputLevelInput.addEventListener('input', calculateAndRenderMaxSpans);
+        targetInputLevelInput.addEventListener('change', calculateAndRenderMaxSpans);
+
+        // Tilt Chart Event Listeners
+        tiltLevelLowInput.addEventListener('input', calculateAndRenderTilt);
+        tiltLevelHighInput.addEventListener('input', calculateAndRenderTilt);
+		tiltHighFreqRadios.forEach(radio => {
+		radio.addEventListener('change', () => {
+            calculateAndRenderTilt();
+			});
+		});
+        
+        
+        // Optical Budget Event Listeners (NEW & Composite)
+        const opticalInputs = [
+            opticalDistanceKm, opticalConnectors, opticalSplices, opticalMuxed,
+            numTransmitters, singleTxPower 
+        ];
+        opticalInputs.forEach(input => {
+            input.addEventListener('input', calculateOpticalBudget);
+            input.addEventListener('change', calculateOpticalBudget);
+        });
+
+        // View Switching Listeners
+        spanLossBtn.addEventListener('click', () => switchView('spanLoss'));
+        tiltChartBtn.addEventListener('click', () => switchView('tiltChart'));
+        // NEW: Max Spans View Listener
+        maxSpansBtn.addEventListener('click', () => switchView('maxSpans'));
+        opticalBudgetBtn.addEventListener('click', () => switchView('opticalBudget')); 
+
+
+        // Initial Setup
+        setupTiltChart(); // Initialize the chart canvas once
+        renderAddedPassives(); // Show "No devices added yet" initially
+        // Use a short delay to ensure all initial values are rendered on load
+        setTimeout(() => switchView('spanLoss'), 10); 
+    </script>
+</body>
+</html>
